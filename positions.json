@@ -1,0 +1,96 @@
+{
+ "abyss/@site-a": {
+  "from": [
+   0.4207,
+   0.088
+  ]
+ },
+ "abyss/@site-b": {
+  "from": [
+   0.4111,
+   0.8681
+  ]
+ },
+ "ascent/@site-a": {
+  "from": [
+   0.3155,
+   0.1434
+  ]
+ },
+ "ascent/@site-b": {
+  "from": [
+   0.2677,
+   0.8088
+  ]
+ },
+ "ascent/attack/sova/A/ชิ้งไปA.png": {
+  "from": [
+   0.3422,
+   0.7349
+  ],
+  "to": [
+   0.2833,
+   0.6185
+  ]
+ },
+ "ascent/attack/sova/A/เช็คในA.png": {
+  "from": [
+   0.3015,
+   0.575
+  ],
+  "to": [
+   0.3464,
+   0.7672
+  ]
+ },
+ "ascent/attack/sova/B/เช็คหน้าB.png": {
+  "from": [
+   0.3583,
+   0.836
+  ],
+  "to": [
+   0.4919,
+   0.7348
+  ]
+ },
+ "ascent/defense/sova/A/Ascent_กัน_A.png": {
+  "from": [
+   0.4302,
+   0.1377
+  ],
+  "to": [
+   0.5086,
+   0.2562
+  ]
+ },
+ "ascent/defense/sova/A/Ascent_กัน_Aข้าง.png": {
+  "from": [
+   0.2849,
+   0.283
+  ],
+  "to": [
+   0.5755,
+   0.2887
+  ]
+ },
+ "ascent/defense/sova/A/Ascent_กัน_Aบน.png": {
+  "from": [
+   0.2658,
+   0.1606
+  ],
+  "to": [
+   0.696,
+   0.262
+  ]
+ },
+ "ascent/defense/sova/A/กระถาง.png": {
+  "from": [
+   0.2983,
+   0.3595
+  ],
+  "to": [
+   0.3556,
+   0.0841
+  ]
+ }
+}

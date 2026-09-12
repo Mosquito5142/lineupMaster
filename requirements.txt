@@ -1,0 +1,9 @@
+PySide6>=6.7
+pynput>=1.7.7
+PyYAML>=6.0
+
+# แพ็กเกจของระบบเสียงเดิม (เลิกใช้แล้ว เปลี่ยนไปควบคุมด้วย Numpad)
+# ยังติดตั้งค้างอยู่ในเครื่อง ถ้าอยากคืนพื้นที่ดิสก์ ~2GB ให้ถอนออกด้วย:
+#   .venv\Scripts\python.exe -m pip uninstall -y faster-whisper ctranslate2 onnxruntime
+#   .venv\Scripts\python.exe -m pip uninstall -y sounddevice av tokenizers huggingface-hub
+#   .venv\Scripts\python.exe -m pip uninstall -y nvidia-cublas-cu12 nvidia-cudnn-cu12 nvidia-cuda-nvrtc-cu12

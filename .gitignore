@@ -1,0 +1,21 @@
+.venv/
+__pycache__/
+*.pyc
+query-log.txt
+last-view.json
+
+# ผลลัพธ์การบิ้ว exe (สร้างใหม่ได้ด้วย tools/build_exe.py)
+dist/
+build/
+
+# รูปไลน์อัพ — หนักและเป็นสื่อ ไม่เหมาะกับ git เก็บแยกไว้ที่ Google Drive แทน
+# (โครงสร้างโฟลเดอร์ยังคงต้องมีเพื่อให้โปรแกรมสแกนได้ ไม่ต้อง track ไฟล์รูปข้างในเฉยๆ)
+lineups/
+lineups.rar
+
+# ที่พักไฟล์ที่ลบผ่าน tools/manage.py (ดู library.py) — ของส่วนตัว ไม่ใช่ของที่ควรแชร์
+.trash/
+
+# shortcut ของ Windows (.lnk) — ฝัง path เต็มของเครื่องที่สร้างไว้ข้างใน (เช่น C:\Users\PC\...)
+# เปิดในเครื่องอื่นก็ใช้ไม่ได้อยู่ดี สร้างใหม่เองได้ด้วย create_shortcut.bat
+*.lnk
