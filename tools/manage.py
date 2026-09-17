@@ -62,7 +62,9 @@ from lineupmaster import index as index_mod  # noqa: E402
 from lineupmaster import library as lib  # noqa: E402
 from lineupmaster import meta as meta_mod  # noqa: E402
 from lineupmaster import positions as pos_mod  # noqa: E402
-from lineupmaster.browser import ABILITY_TH, AGENT_TH, SIDES, SITES, SIDE_LABEL  # noqa: E402
+from lineupmaster.browser import (  # noqa: E402
+    ABILITY_TH, AGENT_ABILITIES, AGENT_TH, SIDES, SITES, SIDE_LABEL,
+)
 from lineupmaster.index import IMAGE_SUFFIXES  # noqa: E402
 from lineupmaster.paths import ROOT  # noqa: E402
 from _shared import STYLE, THUMB, ImagePane, MapPane, thumbnail  # noqa: E402
@@ -340,6 +342,38 @@ class Manager(QWidget):
 
         self.reload()
 
+    # -- ช่องสกิล: แคบตามตัวละคร กันเลื่อนหายากตอนมีหลายตัวละคร --------------
+    def _ability_options(self, agent: str | None, keep: str | None = None) -> list[str]:
+        """สกิลที่ควรให้เลือกของตัวละครนี้ — แคบลงเหลือเฉพาะสกิลจริงถ้ารู้จักตัวละครนั้น
+        (`AGENT_ABILITIES`) ไม่รู้จักก็โชว์ทั้งหมดไว้ก่อน (ปลอดภัยกว่าเดาผิดตัว)
+
+        ``keep`` คือค่าที่ตั้งไว้เดิม (ถ้ามี) — การันตีว่ายังเลือกได้เสมอแม้ไม่ได้อยู่ในชุด
+        ปกติของตัวละครนี้ (เช่น ข้อมูลเก่าก่อนมีตาราง หรือแท็กผิดตัวที่ตั้งไว้แต่แรก) ไม่งั้น
+        พอแคบรายการแล้วอาจเผลอบันทึกทับค่าที่ยังมีอยู่จริงจนหายไปเงียบๆ
+        """
+        options = list(AGENT_ABILITIES.get(agent or "", self.abilities))
+        if keep and keep not in options:
+            options.append(keep)
+        return options
+
+    def _rebuild_ability_combo(
+        self, combo: QComboBox, blank_label: str, agent: str | None, keep: str | None = None,
+    ) -> None:
+        """เติมรายการสกิลของ combo box ใหม่ตามตัวละครที่เลือกอยู่.
+
+        ``keep`` ส่งมาตรงๆ เสมอ ไม่มีการเดาจาก ``combo.currentData()`` เอง — ผู้เรียกเป็นคน
+        ตัดสินใจว่าจะคงค่าเดิมไว้ (ส่ง ``keep`` เป็นค่านั้น) หรือรีเซ็ตกลับไปว่าง
+        (ส่ง ``keep=None`` ตรงๆ — ตรงกับ data ของช่องว่างพอดี จึงกลับไปที่ช่องว่างเสมอ)
+        """
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem(blank_label, None)
+        for ability in self._ability_options(agent, keep):
+            combo.addItem(th_ability(ability), ability)
+        index = combo.findData(keep)
+        combo.setCurrentIndex(index if index >= 0 else 0)
+        combo.blockSignals(False)
+
     # -- แถวบน: ค้นหา + นับ + ปุ่มเพิ่ม ------------------------------------
     def _build_top(self) -> None:
         title = QLabel("คลังไลน์อัพ")
@@ -389,6 +423,9 @@ class Manager(QWidget):
 
         self.f_star = QPushButton("★ ไม้ตาย"); self.f_star.setCheckable(True)
         self.f_unpinned = QPushButton("◌ ยังไม่จิ้มหมุด"); self.f_unpinned.setCheckable(True)
+        # ตัวละครเปลี่ยน -> แคบช่องสกิล (ทั้งตัวกรองและปุ่มเหมา) ให้เหลือเฉพาะของตัวนั้น
+        # ต่อสัญญาณนี้ก่อน _refill/_bulk_ability เสมอ จะได้อ่านรายการสกิลที่แคบแล้ว ไม่ใช่ของเก่า
+        self.f_agent.currentIndexChanged.connect(self._on_filter_agent_changed)
         for widget in (self.f_map, self.f_side, self.f_site, self.f_agent, self.f_ability):
             widget.currentIndexChanged.connect(self._refill)
         for widget in (self.f_star, self.f_unpinned):
@@ -585,6 +622,10 @@ class Manager(QWidget):
         self.e_note = QPlainTextEdit()
         self.e_note.setPlaceholderText("ไม่บังคับ")
         self.e_note.setFixedHeight(70)
+
+        # ตัวละครของใบนี้เปลี่ยน -> แคบช่องสกิลตาม ต้องต่อ**ก่อน** _draft_changed เสมอ จะได้
+        # เทียบ dirty state กับรายการสกิลที่แคบแล้ว ไม่ใช่ของเก่าค้างจากตัวละครก่อนหน้า
+        self.e_agent.currentIndexChanged.connect(self._on_edit_agent_changed)
 
         self.e_name.textChanged.connect(self._draft_changed)
         for widget in (self.e_map, self.e_side, self.e_site, self.e_agent, self.e_ability):
@@ -828,7 +869,12 @@ class Manager(QWidget):
             self.e_side.setCurrentIndex(max(0, self.e_side.findData(draft["side"])))
             self.e_site.setCurrentIndex(max(0, self.e_site.findText(draft["site"].upper())))
             self.e_agent.setCurrentIndex(max(0, self.e_agent.findData(draft["agent"])))
-            self.e_ability.setCurrentIndex(max(0, self.e_ability.findData(draft["ability"])))
+            # ตั้ง agent ข้างบนสั่งแคบช่องสกิลไปแล้วผ่าน _on_edit_agent_changed (ด้วยค่าเก่า
+            # ที่ค้างจากใบก่อนหน้า) เรียกซ้ำตรงนี้ด้วยค่าที่ถูกต้องจริงของใบนี้ ยืนยันว่า
+            # ค่าที่เคยตั้งไว้ (ไม่ว่าจะอยู่ในชุดปกติของตัวละครนี้หรือไม่) ยังเลือกได้เสมอ
+            self._rebuild_ability_combo(
+                self.e_ability, NONE_ABILITY, draft["agent"], keep=draft["ability"]
+            )
             self.c_star.setChecked(draft["fav"])
             self.e_tags.setText(", ".join(draft["tags"]))
             self.e_note.setPlainText(draft["note"])
@@ -846,6 +892,16 @@ class Manager(QWidget):
             "tags": [t.strip().lower() for t in self.e_tags.text().split(",") if t.strip()],
             "note": self.e_note.toPlainText().strip(),
         }
+
+    def _on_edit_agent_changed(self, _index: int) -> None:
+        """ตัวละครในฟอร์มเปลี่ยน -> แคบช่องสกิลตาม เก็บค่าที่เพิ่งเลือกไว้ (ถ้ามี) ไม่ให้หาย
+        ไปเงียบๆ — ระหว่างเปิดใบใหม่ (`_fill_form`) จะถูกเรียกซ้ำอีกทีด้วยค่าที่ถูกต้องจริง
+        ของใบนั้นอยู่แล้ว ที่นี่ดูแลแค่กรณีผู้ใช้สลับตัวละครเองกลางคันตอนแก้ไข
+        """
+        self._rebuild_ability_combo(
+            self.e_ability, NONE_ABILITY, self.e_agent.currentData(),
+            keep=self.e_ability.currentData(),
+        )
 
     def _draft_changed(self, *_a) -> None:
         if self._filling or self.draft is None:
@@ -1208,6 +1264,12 @@ class Manager(QWidget):
         self._say(f"ตั้งตัวละคร {label} ให้ {moved} ใบแล้ว · ไฟล์ถูกย้ายเข้าโฟลเดอร์ใหม่", "ok")
 
     # -- ตัวกรอง -------------------------------------------------------------
+    def _on_filter_agent_changed(self, _index: int) -> None:
+        """ตัวละครที่กรองอยู่เปลี่ยน -> แคบช่องสกิล (ทั้งตัวกรองและปุ่มเหมา) ตามไปด้วย."""
+        agent = self.f_agent.currentData()
+        self._rebuild_ability_combo(self.f_ability, ALL, agent)
+        self._rebuild_ability_combo(self.bulk_ability, "ตั้งสกิลให้ทุกใบ…", agent)
+
     def _reset_filters(self) -> None:
         self._filling = True
         for widget in (self.f_map, self.f_side, self.f_site, self.f_agent, self.f_ability):
