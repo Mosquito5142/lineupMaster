@@ -4,14 +4,16 @@
     .venv\\Scripts\\python.exe tools\\build_exe.py     <- ใช้ตัวนี้ ไม่ต้องเรียก spec เอง
 
 ทำไมเป็น exe ตัวเดียว: PySide6 ใหญ่หลายร้อยเมกะไบต์ ถ้าบิ้วแยกตัวโปรแกรมกับตัวจัดการ
-Qt จะถูกก๊อปซ้ำสองรอบ จึงบิ้วตัวเดียวแล้วแยกงานด้วยคำสั่งย่อย (manage / pin / maps)
-ตามที่ __main__.py กำหนดไว้ แล้วทำ shortcut แยกไอคอนให้แต่ละคำสั่งแทน
+Qt จะถูกก๊อปซ้ำสองรอบ จึงบิ้วตัวเดียวแล้วแยกงานด้วยคำสั่งย่อย (manage / pin / maps /
+callouts / place-callouts / capture-region) ตามที่ __main__.py กำหนดไว้ แล้วทำ shortcut แยกไอคอนให้แต่ละคำสั่งแทน
 
 ไม่ฝังข้อมูลผู้ใช้เข้าบันเดิล — lineups/, config.yaml, positions.json ฯลฯ อยู่ข้างๆ exe
 เพราะเป็นของที่แก้ตลอด (ดู src/lineupmaster/paths.py)
 """
 
 from pathlib import Path
+
+from PyInstaller.utils.hooks import collect_submodules
 
 ROOT = Path(SPECPATH)
 
@@ -20,8 +22,17 @@ HIDDEN = [
     "manage",
     "pin_lineups",
     "fetch_maps",
+    "fetch_callouts",
+    "fetch_callout_reference",
+    "place_callouts",
+    "auto_place_callouts",
+    "pick_capture_region",
     "pynput.keyboard._win32",
     "pynput.mouse._win32",
+    # winsdk เป็น namespace package (ไม่มี __init__.py) — PyInstaller ตามรอย import
+    # แบบปกติของ namespace package ไม่ค่อยได้ ต้องบอกให้เก็บทุก submodule ตรงๆ ไม่งั้น
+    # ตอนเป็น exe แล้วจะ import winsdk.windows.media.ocr ไม่เจอ (อ่านชื่อโซนด้วย OCR พัง)
+    *collect_submodules("winsdk"),
 ]
 
 # ตัดส่วนของ Qt ที่ไม่ได้ใช้ออก ไม่งั้นบันเดิลจะใหญ่เกินจำเป็นมาก

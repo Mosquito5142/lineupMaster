@@ -65,6 +65,13 @@ def main() -> int:
         return 1
 
     print(f"[1/3] Python ของเครื่อง: {sys.version.split()[0]}  ({sys.executable})")
+    if sys.version_info >= (3, 13):
+        print("      [!] Python นี้ใหม่เกินไปสำหรับฟีเจอร์ \"อ่านชื่อโซนด้วย OCR\"")
+        print("          (แพ็กเกจ winsdk มีไฟล์สำเร็จรูปให้แค่ถึง Python 3.12 เท่านั้น)")
+        print("          ส่วนอื่นของโปรแกรมยังใช้ได้ปกติหมด แค่ปุ่ม Numpad 9 (วางรูปชื่อโซน")
+        print("          ให้อ่าน) จะใช้ไม่ได้ — ถ้าอยากได้ฟีเจอร์นี้ด้วย ลง Python 3.12 แล้ว")
+        print("          รัน:  py -3.12 tools\\setup.py")
+        print()
 
     # -- ตรวจ .venv เดิม --
     if VENV.exists():

@@ -103,9 +103,13 @@ def _rekey(path: Path, old: str, new: str | None, section: str | None = None) ->
 
 
 def migrate(root: Path, old_rel: str, new_rel: str | None) -> None:
-    """ย้ายหมุดกับสถิติของไลน์อัพไปคีย์ใหม่ (new_rel = None คือลบทิ้ง)."""
+    """ย้ายหมุด/สถิติ/แท็กของไลน์อัพไปคีย์ใหม่ (new_rel = None คือลบทิ้ง).
+
+    **ทุกไฟล์ที่คีย์ด้วย rel ต้องอยู่ในนี้ให้ครบ** ไม่งั้นเปลี่ยนชื่อรูปทีเดียวข้อมูลหลุดเงียบๆ
+    """
     _rekey(root / "positions.json", old_rel, new_rel)
     _rekey(root / "last-view.json", old_rel, new_rel, section="uses")
+    _rekey(root / "meta.json", old_rel, new_rel)
 
 
 # -- คำสั่งหลัก -----------------------------------------------------------

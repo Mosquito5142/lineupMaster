@@ -10,8 +10,14 @@ REM ---------------------------------------------------------------
 chcp 65001 >nul
 cd /d "%~dp0"
 
+REM Prefer Python 3.12 specifically: the "winsdk" package (Windows OCR for the
+REM zone-name locate feature) only ships prebuilt wheels up to 3.12. Falls back
+REM to whatever "python" resolves to if 3.12 isn't installed (setup.py warns).
 set "PYCMD="
-py -3 --version >nul 2>&1 && set "PYCMD=py -3"
+py -3.12 --version >nul 2>&1 && set "PYCMD=py -3.12"
+if not defined PYCMD (
+    py -3 --version >nul 2>&1 && set "PYCMD=py -3"
+)
 if not defined PYCMD (
     python --version >nul 2>&1 && set "PYCMD=python"
 )

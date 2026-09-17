@@ -33,8 +33,8 @@ from pathlib import Path
 _HERE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_HERE / "src"))
 
-from PySide6.QtCore import QRect, QSize, Qt, QTimer, Signal  # noqa: E402
-from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPen, QPixmap  # noqa: E402
+from PySide6.QtCore import QSize, Qt, QTimer  # noqa: E402
+from PySide6.QtGui import QColor, QFont, QIcon  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
     QApplication,
     QCheckBox,
@@ -49,211 +49,16 @@ from PySide6.QtWidgets import (  # noqa: E402
     QWidget,
 )
 
+from lineupmaster import callouts as callout_mod  # noqa: E402
 from lineupmaster import config as config_mod  # noqa: E402
 from lineupmaster.paths import ROOT  # noqa: E402
 from lineupmaster import index as index_mod  # noqa: E402
 from lineupmaster import positions as pos_mod  # noqa: E402
 from lineupmaster.browser import SIDES, SITES, SIDE_LABEL  # noqa: E402
-from _shared import STYLE, THUMB, thumbnail  # noqa: E402
+from _shared import STYLE, THUMB, ImagePane, MapPane, thumbnail  # noqa: E402
 
-FROM_COLOR = "#4ade80"      # เขียว = จุดยืน (สีเดียวกับกรอบเลือกรูปในแอปหลัก)
-TO_COLOR = "#ffd479"        # เหลือง = จุดที่ลูกไปลง (สีเดียวกับข้อความเตือนในแอปหลัก)
-OLD_COLOR = "#5b7a9a"       # ฟ้าจาง = หมุดของสูตรอื่นในแมพ/ฝั่งเดียวกัน
 DONE_COLOR = "#4ade80"      # เขียว = ชื่อในลิสต์ของรูปที่จิ้มแล้ว
-SITE_LABEL_COLOR = "#7dd3fc"  # ป้าย A/B/C บนแผนที่ (สีเดียวกับในแอปหลัก)
 ALL = "— ทั้งหมด —"
-
-
-def _fit(source: QPixmap, w: int, h: int) -> QPixmap:
-    return source.scaled(
-        w, h, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
-    )
-
-
-class _ImagePane(QWidget):
-    """โชว์รูปสูตรให้เต็มพื้นที่โดยไม่บิดสัดส่วน."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._source: QPixmap | None = None
-        self._path: Path | None = None
-
-    def set_image(self, path: Path | None) -> None:
-        if path == self._path:
-            return
-        self._path = path
-        self._source = None
-        if path is not None:
-            pix = QPixmap(str(path))
-            self._source = None if pix.isNull() else pix
-        self.update()
-
-    def paintEvent(self, _event) -> None:  # noqa: N802 - Qt API
-        painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor("#0b0e14"))
-        if self._source is None:
-            return
-        pix = _fit(self._source, self.width(), self.height())
-        painter.drawPixmap(
-            (self.width() - pix.width()) // 2, (self.height() - pix.height()) // 2, pix
-        )
-
-
-class _MapPane(QWidget):
-    """แผนที่ที่คลิกได้ — คืนพิกัดเป็นสัดส่วน 0..1 ของรูป ไม่ใช่พิกเซลของหน้าต่าง."""
-
-    clicked = Signal(float, float)
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._map: QPixmap | None = None
-        self._name: str | None = None
-        self._message = ""
-        self.old_pins: list[tuple[float, float]] = []
-        self.pending: tuple[float, float] | None = None   # จุดยืนที่เพิ่งคลิก รอคลิกจุดลง
-        self.saved: tuple[tuple[float, float], tuple[float, float] | None] | None = None
-        self.labels: dict[str, tuple[tuple[float, float], bool]] = {}  # {"a": ((x,y), ตั้งเองไหม)}
-
-    def set_map(self, name: str | None) -> None:
-        if name == self._name:
-            return
-        self._name = name
-        self._map = None
-        self._message = ""
-        if name is None:
-            return
-        path = ROOT / "assets" / "maps" / f"{name}.png"
-        if not path.is_file():
-            self._message = f"ไม่มีรูปแผนที่ {name}\nรัน: python tools/fetch_maps.py"
-        else:
-            pix = QPixmap(str(path))
-            if pix.isNull():
-                self._message = f"เปิดรูปแผนที่ {name} ไม่ได้"
-            else:
-                self._map = pix
-        self.update()
-
-    # -- แปลงพิกัด -------------------------------------------------------
-    def _map_rect(self) -> tuple[int, int, int, int] | None:
-        """กรอบที่รูปแผนที่ถูกวาดจริง (x, y, w, h) — คลิกนอกกรอบนี้ไม่นับ."""
-        if self._map is None:
-            return None
-        pix = _fit(self._map, self.width(), self.height())
-        return (
-            (self.width() - pix.width()) // 2,
-            (self.height() - pix.height()) // 2,
-            pix.width(),
-            pix.height(),
-        )
-
-    def _to_widget(self, point: tuple[float, float]) -> tuple[int, int] | None:
-        rect = self._map_rect()
-        if rect is None:
-            return None
-        x, y, w, h = rect
-        return (round(x + point[0] * w), round(y + point[1] * h))
-
-    def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt API
-        rect = self._map_rect()
-        if rect is None or event.button() != Qt.MouseButton.LeftButton:
-            return
-        x, y, w, h = rect
-        px, py = event.position().x(), event.position().y()
-        if not (x <= px <= x + w and y <= py <= y + h):
-            return
-        self.clicked.emit((px - x) / w, (py - y) / h)
-
-    # -- วาด -------------------------------------------------------------
-    def paintEvent(self, _event) -> None:  # noqa: N802 - Qt API
-        painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor("#0b0e14"))
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-
-        if self._map is None:
-            painter.setPen(QColor("#8a93a6"))
-            font = painter.font()
-            font.setPointSize(14)
-            painter.setFont(font)
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self._message)
-            return
-
-        rect = self._map_rect()
-        assert rect is not None
-        x, y, w, h = rect
-        painter.drawPixmap(x, y, _fit(self._map, self.width(), self.height()))
-
-        self._draw_labels(painter)
-
-        # หมุดของสูตรอื่นในแมพ/ฝั่งเดียวกัน — ไว้ดูว่าจะสแนปเข้าอันไหนได้
-        for point in self.old_pins:
-            self._dot(painter, point, OLD_COLOR, 8, filled=False)
-
-        if self.saved is not None:
-            src, dst = self.saved
-            if dst is not None:
-                self._line(painter, src, dst, TO_COLOR)
-                self._dot(painter, dst, TO_COLOR, 8)
-            self._dot(painter, src, FROM_COLOR, 10)
-        elif self.pending is not None:
-            self._dot(painter, self.pending, FROM_COLOR, 10)
-
-    def _draw_labels(self, painter) -> None:
-        """ป้าย A/B/C — ตั้งเอง (ทึบ) หรือเฉลี่ยอัตโนมัติจากจุด "to" (จาง+เส้นประ) แล้วแต่มีอะไร
-
-        ดูที่มาใน positions.site_labels() — ช่วยให้เห็นบริบทตอนจิ้ม เช่น รู้ว่ากำลังจิ้มสูตรที่
-        ยิงเข้า A จริงไหมเทียบกับป้าย A ที่เห็น
-        """
-        if not self.labels:
-            return
-        rect = self._map_rect()
-        if rect is None:
-            return
-        size = max(20, round(min(rect[2], rect[3]) * 0.05))
-        font = painter.font()
-        font.setPointSize(round(size * 0.55))
-        font.setBold(True)
-        painter.setFont(font)
-        for site, (point, manual) in self.labels.items():
-            at = self._to_widget(point)
-            if at is None:
-                continue
-            chip = QRect(at[0] - size // 2, at[1] - size // 2, size, size)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(11, 14, 20, 170 if manual else 90))
-            painter.drawEllipse(chip)
-            if not manual:
-                pen = QPen(QColor(SITE_LABEL_COLOR))
-                pen.setStyle(Qt.PenStyle.DashLine)
-                pen.setWidth(2)
-                painter.setPen(pen)
-                painter.setBrush(Qt.BrushStyle.NoBrush)
-                painter.drawEllipse(chip)
-            label_color = QColor(SITE_LABEL_COLOR)
-            if not manual:
-                label_color.setAlpha(160)
-            painter.setPen(label_color)
-            painter.drawText(chip, Qt.AlignmentFlag.AlignCenter, site.upper())
-
-    def _dot(self, painter, point, color: str, radius: int, filled: bool = True) -> None:
-        at = self._to_widget(point)
-        if at is None:
-            return
-        painter.setPen(QPen(QColor(color), 2))
-        if filled:
-            painter.setBrush(QColor(color))
-        else:
-            # เติมสีจางไว้ด้วย ไม่งั้นวงกลมเปล่าจะจมหายไปกับพื้นที่มืดของแผนที่
-            faint = QColor(color)
-            faint.setAlpha(70)
-            painter.setBrush(faint)
-        painter.drawEllipse(at[0] - radius, at[1] - radius, radius * 2, radius * 2)
-
-    def _line(self, painter, a, b, color: str) -> None:
-        pa, pb = self._to_widget(a), self._to_widget(b)
-        if pa is None or pb is None:
-            return
-        painter.setPen(QPen(QColor(color), 2))
-        painter.drawLine(pa[0], pa[1], pb[0], pb[1])
 
 
 class PinEditor(QWidget):
@@ -266,6 +71,7 @@ class PinEditor(QWidget):
         self.queue: list = []               # รายการที่กรองอยู่ตอนนี้ (แสดงในลิสต์ซ้าย)
         self.state_path = state_path
         self.positions = pos_mod.load(state_path)
+        self.callout_data = callout_mod.load(ROOT / "callouts.json")
         self.cursor = 0
         self.pending: tuple[float, float] | None = None
         self._placing_site: str | None = None   # ไม่ None = รอคลิกครั้งถัดไปเพื่อวางป้ายจุดนี้
@@ -346,8 +152,8 @@ class PinEditor(QWidget):
         # แถวปุ่มตั้ง/ล้างป้าย A/B/C — สร้างใหม่ทุกครั้งที่ _render() เพราะจุดที่มีเปลี่ยนตามแมพ/ฝั่ง
         self.site_row = QHBoxLayout()
 
-        self.image = _ImagePane()
-        self.map = _MapPane()
+        self.image = ImagePane()
+        self.map = MapPane()
         self.map.clicked.connect(self._on_click)
 
         panes = QHBoxLayout()
@@ -475,6 +281,8 @@ class PinEditor(QWidget):
         self._refill()
         if self.current is not None and self.current.rel != rel:
             return                          # refill ขยับไปที่ยังไม่จิ้มให้แล้วโดยอัตโนมัติ
+        if not self.queue:
+            return                          # จิ้มรูปสุดท้ายที่เหลือในตัวกรองไปแล้ว ไม่มีที่ให้ไปต่อ
         order = list(range(self.cursor + 1, len(self.queue))) + list(range(0, self.cursor + 1))
         for i in order:
             if self.queue[i].rel not in self.positions:
@@ -594,6 +402,7 @@ class PinEditor(QWidget):
             self.image.set_image(None)
             self.map.set_map(None)
             self.map.labels = {}
+            self.map.callouts = []
             self.map.update()
             self.b_delete.setEnabled(False)
             self._placing_site = None
@@ -621,6 +430,7 @@ class PinEditor(QWidget):
         self.map.old_pins = self._siblings()
         self.map.pending = self.pending
         self.map.labels = pos_mod.site_labels(lu.map, group, self.positions)
+        self.map.callouts = callout_mod.placed(self.callout_data, lu.map or "")
         self._rebuild_site_buttons(sites_present)
 
         entry = self.positions.get(lu.rel)

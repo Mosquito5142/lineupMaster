@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  html, body { margin:0; padding:0; background:#0b1013; }
+  body { font-family:'IBM Plex Sans Thai', system-ui, sans-serif; }
+  a { color:#4ecf9a; } a:hover { color:#7fe1b8; }
+  input, select, textarea, button { font-family:inherit; }
+  select option { background:#141b1f; color:#e4ebee; }
+  ::-webkit-scrollbar { width:10px; height:10px; }
+  ::-webkit-scrollbar-thumb { background:#2b383f; border-radius:6px; }
+  ::-webkit-scrollbar-thumb:hover { background:#3a4a53; }
+  ::-webkit-scrollbar-track { background:#0e1417; }
+</style>
+</helmet>
+
+<div style="min-width:860px; height:100vh; min-height:720px; display:flex; flex-direction:column; background:#0e1316; color:#e4ebee; font-size:15px; overflow:hidden; position:relative; text-wrap:pretty;">
+
+  <div style="flex:none; height:56px; display:flex; align-items:center; gap:18px; padding:0 18px; background:#141b1f; border-bottom:1px solid #27333a;">
+    <div style="display:flex; align-items:baseline; gap:10px; flex:none;">
+      <span style="font-size:18px; font-weight:600; letter-spacing:-0.01em;">คลังไลน์อัพ</span>
+      <span style="font-family:'IBM Plex Mono', monospace; font-size:11px; color:#71808a;">LineupMaster · ออฟไลน์</span>
+    </div>
+
+    <div style="flex:1; max-width:420px; display:flex; align-items:center; gap:9px; height:34px; padding:0 12px; background:#0d1215; border:1px solid #2a363d; border-radius:6px;">
+      <span style="font-family:'IBM Plex Mono', monospace; font-size:12px; color:#66757e; flex:none;">ค้นหา</span>
+      <input value="{{ query }}" onChange="{{ onQuery }}" placeholder="ชื่อไลน์อัพ เช่น เช็คBใน" style="flex:1; min-width:0; background:transparent; border:none; outline:none; color:#e4ebee; font-size:14px;">
+      <span onClick="{{ onClearQuery }}" style="display:{{ clearQueryDisplay }}; font-family:'IBM Plex Mono', monospace; font-size:13px; color:#8b9aa3; cursor:pointer; flex:none;">×</span>
+    </div>
+
+    <div style="margin-left:auto; display:flex; align-items:center; gap:10px; flex:none;">
+      <span style="font-family:'IBM Plex Mono', monospace; font-size:12.5px; color:#a9b7bf;">{{ countText }}</span>
+      <div onClick="{{ onOnlyUnpinned }}" style="display:flex; align-items:center; gap:8px; height:30px; padding:0 12px; border-radius:15px; background:rgba(226,180,100,0.1); border:1px solid rgba(226,180,100,0.38); color:#e2b464; font-size:13px; cursor:pointer;">
+        <span style="width:7px; height:7px; border-radius:50%; background:#e2b464;"></span>
+        <span>ยังไม่จิ้มหมุด {{ unpinnedCount }} ใบ</span>
+      </div>
+      <button onClick="{{ onOpenAdd }}" style="height:34px; padding:0 15px; border:none; border-radius:6px; background:#4ecf9a; color:#06241a; font-size:14px; font-weight:600; cursor:pointer;">เพิ่มรูปเข้าคลัง</button>
+    </div>
+  </div>
+
+  <div style="flex:none; display:flex; align-items:center; gap:8px; padding:9px 18px; background:#111819; border-bottom:1px solid #232f36; flex-wrap:wrap;">
+    <sc-for list="{{ filterSelects }}" as="f" hint-placeholder-count="5">
+      <div style="display:flex; align-items:center; gap:7px;">
+        <span style="font-size:12.5px; color:#7d8c95;">{{ f.label }}</span>
+        <select value="{{ f.value }}" onChange="{{ f.onChange }}" style="height:30px; min-width:132px; padding:0 8px; border-radius:5px; border:1px solid {{ f.border }}; background:{{ f.bg }}; color:{{ f.fg }}; font-size:13px; outline:none; cursor:pointer;">
+          <sc-for list="{{ f.options }}" as="o" hint-placeholder-count="3">
+            <option value="{{ o.v }}">{{ o.t }}</option>
+          </sc-for>
+        </select>
+      </div>
+    </sc-for>
+
+    <div onClick="{{ onToggleStar }}" style="display:flex; align-items:center; gap:7px; height:30px; padding:0 11px; border-radius:5px; cursor:pointer; font-size:13px; border:1px solid {{ starChip.border }}; background:{{ starChip.bg }}; color:{{ starChip.fg }};">
+      <span style="font-family:'IBM Plex Mono', monospace;">★</span><span>ไม้ตาย</span>
+    </div>
+    <div onClick="{{ onToggleUnpinned }}" style="display:flex; align-items:center; gap:7px; height:30px; padding:0 11px; border-radius:5px; cursor:pointer; font-size:13px; border:1px solid {{ unpinChip.border }}; background:{{ unpinChip.bg }}; color:{{ unpinChip.fg }};">
+      <span style="font-family:'IBM Plex Mono', monospace;">◌</span><span>ยังไม่จิ้มหมุด</span>
+    </div>
+    <div onClick="{{ onResetFilters }}" style="margin-left:auto; height:30px; display:flex; align-items:center; padding:0 12px; border-radius:5px; border:1px dashed #33424b; color:#8b9aa3; font-size:12.5px; cursor:pointer;">ล้างตัวกรองทั้งหมด</div>
+  </div>
+
+  <div style="flex:1; min-height:0; display:flex;">
+
+    <div style="flex:none; width:{{ libWidth }}; display:flex; flex-direction:column; background:#121a1e; border-right:1px solid #232f36; overflow:hidden;">
+      <div style="flex:none; height:38px; display:flex; align-items:center; gap:8px; padding:0 12px; border-bottom:1px solid #1e282e;">
+        <span style="font-size:12.5px; font-weight:600; color:#a9b7bf;">รูปในคลัง</span>
+        <span style="font-family:'IBM Plex Mono', monospace; font-size:11px; color:#66757e;">{{ countText }}</span>
+        <span onClick="{{ onSelectAllShown }}" style="margin-left:auto; font-size:11.5px; color:#8b9aa3; cursor:pointer;">เลือกทั้งหมดที่กรองอยู่</span>
+      </div>
+
+      <div style="flex:1; min-height:0; overflow-y:auto; padding:10px;">
+        <div style="display:grid; gap:9px; grid-template-columns:repeat({{ thumbCols }}, minmax(0,1fr));">
+          <sc-for list="{{ items }}" as="it" hint-placeholder-count="12">
+            <div onClick="{{ it.onClick }}" style="border-radius:7px; overflow:hidden; cursor:pointer; background:#161e22; border:2px solid {{ it.ring }};">
+              <div style="position:relative; aspect-ratio:16/10; background-color:#131a1e; background-image:repeating-linear-gradient(135deg, #1b252b 0 7px, #131a1e 7px 14px);">
+                <span style="position:absolute; left:5px; top:5px; padding:1px 5px; border-radius:3px; background:rgba(9,13,15,0.78); font-family:'IBM Plex Mono', monospace; font-size:9.5px; color:#8b9aa3;">{{ it.map }}</span>
+                <span style="position:absolute; right:5px; top:5px; display:flex; gap:4px; align-items:center;">
+                  <span style="display:{{ it.starDisplay }}; font-size:10px; color:#e2b464;">★</span>
+                  <span style="display:{{ it.gifDisplay }}; padding:0 4px; border-radius:3px; background:rgba(78,207,154,0.16); color:#4ecf9a; font-family:'IBM Plex Mono', monospace; font-size:9px;">GIF</span>
+                  <span style="width:7px; height:7px; border-radius:50%; background:{{ it.pinDot }};"></span>
+                </span>
+                <span style="position:absolute; left:0; right:0; bottom:0; padding:4px 6px; background:linear-gradient(transparent, rgba(9,13,15,0.9)); font-family:'IBM Plex Mono', monospace; font-size:9.5px; color:#7d8c95;">{{ it.sideSite }}</span>
+              </div>
+              <div style="padding:6px 7px 7px;">
+                <div style="font-size:12.5px; line-height:1.3; color:{{ it.nameFg }}; word-break:break-word;">{{ it.name }}</div>
+                <div style="margin-top:3px; font-size:11px; color:#66757e;">{{ it.agentSkill }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:{{ emptyDisplay }}; flex-direction:column; align-items:center; gap:10px; padding:48px 16px; text-align:center;">
+          <span style="font-family:'IBM Plex Mono', monospace; font-size:26px; color:#2f3c44;">◌</span>
+          <div style="font-size:13.5px; color:#8b9aa3;">{{ emptyTitle }}</div>
+          <div style="font-size:12px; color:#66757e; line-height:1.6;">{{ emptyHint }}</div>
+          <div onClick="{{ onResetFilters }}" style="display:{{ emptyBtnDisplay }}; padding:7px 13px; border-radius:5px; border:1px solid #33424b; color:#cfd9de; font-size:12.5px; cursor:pointer;">ล้างตัวกรอง</div>
+        </div>
+      </div>
+
+      <div style="flex:none; display:{{ bulkDisplay }}; flex-direction:column; gap:9px; padding:12px; border-top:1px solid #232f36; background:#16211f;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:13px; font-weight:600; color:#4ecf9a;">เลือกอยู่ {{ selCount }} ใบ</span>
+          <span onClick="{{ onClearSelection }}" style="margin-left:auto; font-size:11.5px; color:#8b9aa3; cursor:pointer;">ยกเลิกการเลือก</span>
+        </div>
+        <div style="display:flex; gap:7px;">
+          <select value="{{ bulkSkill }}" onChange="{{ onBulkSkill }}" style="flex:1; min-width:0; height:30px; padding:0 8px; border-radius:5px; border:1px solid #2a363d; background:#0d1215; color:#e4ebee; font-size:12.5px; outline:none;">
+            <sc-for list="{{ bulkSkillOptions }}" as="o" hint-placeholder-count="3">
+              <option value="{{ o.v }}">{{ o.t }}</option>
+            </sc-for>
+          </select>
+          <select value="{{ bulkAgent }}" onChange="{{ onBulkAgent }}" style="flex:1; min-width:0; height:30px; padding:0 8px; border-radius:5px; border:1px solid #2a363d; background:#0d1215; color:#e4ebee; font-size:12.5px; outline:none;">
+            <sc-for list="{{ bulkAgentOptions }}" as="o" hint-placeholder-count="3">
+              <option value="{{ o.v }}">{{ o.t }}</option>
+            </sc-for>
+          </select>
+        </div>
+        <div style="display:flex; gap:7px;">
+          <div onClick="{{ onBulkStarOn }}" style="flex:1; text-align:center; padding:7px 0; border-radius:5px; border:1px solid rgba(226,180,100,0.4); background:rgba(226,180,100,0.1); color:#e2b464; font-size:12.5px; cursor:pointer;">★ ตั้งเป็นไม้ตาย</div>
+          <div onClick="{{ onBulkStarOff }}" style="flex:1; text-align:center; padding:7px 0; border-radius:5px; border:1px solid #2a363d; background:#0d1215; color:#cfd9de; font-size:12.5px; cursor:pointer;">เอาไม้ตายออก</div>
+        </div>
+        <div style="font-size:11.5px; color:#7d8c95; line-height:1.5;">ทุกคำสั่งจะถามยืนยันก่อน และบอกจำนวนใบที่จะถูกแก้</div>
+      </div>
+    </div>
+
+    <div style="flex:1; min-width:0; display:flex; flex-direction:column; background:#0b1013;">
+
+      <div style="flex:none; height:40px; display:flex; align-items:center; gap:12px; padding:0 14px; border-bottom:1px solid #1e282e; background:#0e1417;">
+        <span style="font-size:13px; font-weight:600;">{{ primaryName }}</span>
+        <span style="font-family:'IBM Plex Mono', monospace; font-size:11px; color:#66757e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ primaryPath }}</span>
+        <div style="margin-left:auto; display:flex; align-items:center; gap:7px; flex:none;">
+          <span style="display:{{ gifBadgeDisplay }}; padding:3px 8px; border-radius:4px; background:rgba(78,207,154,0.13); border:1px solid rgba(78,207,154,0.38); color:#4ecf9a; font-family:'IBM Plex Mono', monospace; font-size:10.5px;">มีคลิป GIF</span>
+          <span style="padding:3px 8px; border-radius:4px; border:1px solid {{ pinBadge.border }}; background:{{ pinBadge.bg }}; color:{{ pinBadge.fg }}; font-size:11.5px;">{{ pinBadge.text }}</span>
+          <div onClick="{{ onToggleDrawer }}" style="height:28px; display:flex; align-items:center; padding:0 11px; border-radius:5px; border:1px solid #2a363d; background:#161e22; color:#cfd9de; font-size:12.5px; cursor:pointer;">{{ drawerLabel }}</div>
+        </div>
+      </div>
+
+      <div style="flex:1; min-height:0; display:flex; flex-direction:column;">
+      <div style="flex:1; min-height:0; position:relative; padding:14px;">
+
+        <div style="position:absolute; inset:{{ imgBox.inset }}; width:{{ imgBox.w }}; height:{{ imgBox.h }}; z-index:{{ imgBox.z }}; border:1px solid {{ imgBox.border }}; border-radius:8px; overflow:hidden; background:#080c0e; display:flex; flex-direction:column; box-shadow:{{ imgBox.shadow }};">
+          <div style="flex:none; height:32px; display:flex; align-items:center; gap:8px; padding:0 10px; background:#11181c; border-bottom:1px solid #1e282e;">
+            <span style="font-size:11.5px; font-weight:600; color:#a9b7bf;">รูปท่าโยน</span>
+            <div style="margin-left:auto; display:flex; align-items:center; gap:5px;">
+              <div style="display:{{ imgBox.toolsDisplay }}; align-items:center; gap:5px;">
+                <span onClick="{{ onZoomOut }}" style="width:24px; height:24px; display:flex; align-items:center; justify-content:center; border:1px solid #2a363d; border-radius:4px; background:#161e22; color:#cfd9de; font-size:13px; cursor:pointer;">−</span>
+                <span style="min-width:42px; text-align:center; font-family:'IBM Plex Mono', monospace; font-size:11px; color:#a9b7bf;">{{ zoomText }}</span>
+                <span onClick="{{ onZoomIn }}" style="width:24px; height:24px; display:flex; align-items:center; justify-content:center; border:1px solid #2a363d; border-radius:4px; background:#161e22; color:#cfd9de; font-size:13px; cursor:pointer;">+</span>
+                <span onClick="{{ onZoomFit }}" style="height:24px; display:flex; align-items:center; padding:0 9px; border:1px solid #2a363d; border-radius:4px; background:#161e22; color:#cfd9de; font-size:11.5px; cursor:pointer;">พอดีจอ</span>
+              </div>
+              <span onClick="{{ onFocusImage }}" style="display:{{ imgBox.swapDisplay }}; height:24px; align-items:center; padding:0 9px; border:1px solid #2a363d; border-radius:4px; background:#161e22; color:#cfd9de; font-size:11.5px; cursor:pointer;">สลับมาเป็นจอใหญ่</span>
+            </div>
+          </div>
+          <div style="flex:1; min-height:0; overflow:auto; display:flex; align-items:center; justify-content:center; padding:10px;">
+            <div style="display:{{ viewerDisplay }}; flex:none; width:{{ viewerWidth }}; aspect-ratio:16/9; border:1px solid #2a363d; background-color:#131a1e; background-image:repeating-linear-gradient(135deg, #182126 0 10px, #131a1e 10px 20px); align-items:flex-end; justify-content:center; padding-bottom:16px;">
+              <span style="font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:#8b9aa3; background:rgba(8,12,14,0.82); padding:5px 10px; border-radius:4px; text-align:center;">สกรีนช็อตท่าโยน — เห็นจุดยืนและทิศเล็ง</span>
+            </div>
+            <div style="display:{{ viewerEmptyDisplay }}; flex-direction:column; align-items:center; gap:9px; color:#66757e; text-align:center;">
+              <span style="font-family:'IBM Plex Mono', monospace; font-size:24px; color:#2f3c44;">◻</span>
+              <span style="font-size:13px;">{{ viewerEmptyText }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="position:absolute; inset:{{ mapBox.inset }}; width:{{ mapBox.w }}; height:{{ mapBox.h }}; z-index:{{ mapBox.z }}; border:1px solid {{ mapBox.border }}; border-radius:8px; overflow:hidden; background:#080c0e; display:flex; flex-direction:column; box-shadow:{{ mapBox.shadow }};">
+          <div style="flex:none; height:32px; display:flex; align-items:center; gap:8px; padding:0 10px; background:#11181c; border-bottom:1px solid #1e282e;">
+            <span style="font-size:11.5px; font-weight:600; color:#a9b7bf;">แผนที่</span>
+            <span style="font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:#66757e;">{{ primaryMapLabel }}</span>
+            <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+              <div style="display:{{ mapBox.toolsDisplay }}; align-items:center; gap:8px;">
+                <span style="font-size:11.5px; color:#7d8c95;">หมุนภาพ</span>
+                <input type="range" min="0" max="359" value="{{ rotation }}" onChange="{{ onRotate }}" style="width:110px; accent-color:#4ecf9a;">
+                <span style="min-width:36px; font-family:'IBM Plex Mono', monospace; font-size:11px; color:#a9b7bf;">{{ rotationText }}</span>
+                <span onClick="{{ onRotateStep }}" style="height:24px; display:flex; align-items:center; padding:0 8px; border:1px solid #2a363d; border-radius:4px; background:#161e22; color:#cfd9de; font-size:11.5px; cursor:pointer;">+90°</span>
+                <span onClick="{{ onRotateReset }}" style="height:24px; display:flex; align-items:center; padding:0 8px; border:1px solid #2a363d; border-radius:4px; background:#161e22; color:#cfd9de; font-size:11.5px; cursor:pointer;">รีเซ็ต</span>
+              </div>
+              <span onClick="{{ onFocusMap }}" style="display:{{ mapBox.swapDisplay }}; height:24px; align-items:center; padding:0 9px; border:1px solid rgba(78,207,154,0.4); border-radius:4px; background:rgba(78,207,154,0.12); color:#4ecf9a; font-size:11.5px; cursor:pointer;">สลับมาจิ้มหมุด</span>
+            </div>
+          </div>
+
+          <div style="flex:1; min-height:0; display:flex; align-items:center; justify-content:center; padding:10px; background:#080c0e;">
+            <div ref="{{ mapRef }}" onClick="{{ onMapClick }}" style="position:relative; aspect-ratio:1; height:100%; max-width:100%; border:1px solid #2a363d; border-radius:4px; overflow:hidden; background:#0d1215; cursor:{{ mapCursor }};">
+              <div style="position:absolute; inset:0; transform:rotate({{ rotation }}deg);">
+                <div style="position:absolute; inset:0; background-color:#121a1f; background-image:repeating-linear-gradient(45deg, #182228 0 11px, #121a1f 11px 22px);"></div>
+                <div style="position:absolute; left:12%; top:16%; right:12%; bottom:16%; border:1px solid #26333a; border-radius:2px;"></div>
+                <sc-for list="{{ zoneLabels }}" as="z" hint-placeholder-count="8">
+                  <span style="position:absolute; left:{{ z.x }}%; top:{{ z.y }}%; transform:translate(-50%,-50%) rotate({{ counterRotation }}deg); font-family:'IBM Plex Mono', monospace; font-size:{{ zoneFontSize }}; letter-spacing:0.03em; color:#7d8c95; white-space:nowrap; pointer-events:none;">{{ z.t }}</span>
+                </sc-for>
+                <sc-for list="{{ contextPins }}" as="p" hint-placeholder-count="6">
+                  <span style="position:absolute; left:{{ p.x }}%; top:{{ p.y }}%; width:8px; height:8px; margin:-4px 0 0 -4px; border-radius:50%; background:#3b4b54; border:1px solid #55686f; pointer-events:none;"></span>
+                </sc-for>
+                <sc-for list="{{ siteLabels }}" as="s" hint-placeholder-count="2">
+                  <span style="position:absolute; left:{{ s.x }}%; top:{{ s.y }}%; transform:translate(-50%,-50%) rotate({{ counterRotation }}deg); padding:1px 7px; border-radius:4px; border:1px solid rgba(226,180,100,0.5); background:rgba(226,180,100,0.14); color:#e2b464; font-family:'IBM Plex Mono', monospace; font-size:{{ siteFontSize }}; pointer-events:none;">{{ s.t }}</span>
+                </sc-for>
+                <div style="display:{{ pinLine.display }}; position:absolute; left:{{ pinLine.x }}%; top:{{ pinLine.y }}%; width:{{ pinLine.len }}%; height:2px; background:linear-gradient(90deg, #4ecf9a, #e2b464); transform:rotate({{ pinLine.angle }}deg); transform-origin:0 50%; opacity:0.8; pointer-events:none;"></div>
+                <sc-for list="{{ myPins }}" as="p" hint-placeholder-count="2">
+                  <span style="position:absolute; left:{{ p.x }}%; top:{{ p.y }}%; width:{{ p.size }}; height:{{ p.size }}; margin-left:{{ p.off }}; margin-top:{{ p.off }}; border-radius:50%; background:{{ p.color }}; border:2px solid #0b1013; box-shadow:0 0 0 3px {{ p.halo }}; pointer-events:none;"></span>
+                </sc-for>
+              </div>
+              <div style="position:absolute; left:8px; bottom:8px; display:{{ coordDisplay }}; padding:4px 9px; border-radius:4px; background:rgba(8,12,14,0.85); font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:#8b9aa3; pointer-events:none;">{{ mapCoordText }}</div>
+              <div style="position:absolute; inset:0; display:{{ noMapDisplay }}; flex-direction:column; align-items:center; justify-content:center; gap:10px; background:#0d1215; text-align:center; padding:20px;">
+                <span style="font-family:'IBM Plex Mono', monospace; font-size:22px; color:#2f3c44;">◻</span>
+                <span style="font-size:13px; color:#8b9aa3;">ยังไม่มีรูปแผนที่ของแมพนี้</span>
+                <span style="font-size:11.5px; color:#66757e; line-height:1.6;">จิ้มหมุดยังไม่ได้จนกว่าจะมีรูปแผนที่<br>ใส่ไฟล์ไว้ที่ maps/{{ primaryMapLabel }}.png</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div style="flex:none; display:flex; align-items:center; gap:9px; padding:0 14px 14px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:280px; padding:8px 11px; border-radius:6px; border:1px solid {{ pinStatus.border }}; background:{{ pinStatus.bg }}; color:{{ pinStatus.fg }}; font-size:13px; line-height:1.5;">{{ pinStatus.text }}</div>
+            <div style="display:flex; gap:7px; flex-wrap:wrap;">
+              <span onClick="{{ onCancelFirst }}" style="display:{{ cancelFirstDisplay }}; height:30px; align-items:center; padding:0 11px; border:1px solid rgba(226,180,100,0.45); border-radius:5px; background:rgba(226,180,100,0.12); color:#e2b464; font-size:12.5px; cursor:pointer;">ยกเลิกคลิกแรก (Backspace)</span>
+              <sc-for list="{{ siteButtons }}" as="b" hint-placeholder-count="3">
+                <span onClick="{{ b.onClick }}" style="height:30px; display:flex; align-items:center; padding:0 11px; border:1px solid {{ b.border }}; border-radius:5px; background:{{ b.bg }}; color:{{ b.fg }}; font-size:12.5px; cursor:pointer;">{{ b.t }}</span>
+              </sc-for>
+              <span onClick="{{ onClearSiteLabels }}" style="height:30px; display:flex; align-items:center; padding:0 11px; border:1px solid #2a363d; border-radius:5px; background:#161e22; color:#cfd9de; font-size:12.5px; cursor:pointer;">ล้างป้ายจุด</span>
+              <span onClick="{{ onClearPins }}" style="margin-left:auto; height:30px; display:flex; align-items:center; padding:0 11px; border:1px solid rgba(224,140,140,0.4); border-radius:5px; background:rgba(224,140,140,0.1); color:#e08c8c; font-size:12.5px; cursor:pointer;">ลบหมุดของใบนี้</span>
+            </div>
+          </div>
+      </div>
+    </div>
+
+    <div style="flex:none; width:{{ drawerWidth }}; background:#121a1e; border-left:1px solid #232f36; overflow:hidden; display:flex; flex-direction:column;">
+      <div style="flex:none; height:38px; display:flex; align-items:center; gap:8px; padding:0 14px; border-bottom:1px solid #1e282e;">
+        <span style="font-size:12.5px; font-weight:600; color:#a9b7bf;">ข้อมูลของใบนี้</span>
+        <span style="margin-left:auto; font-size:11.5px; color:{{ dirtyFg }};">{{ dirtyText }}</span>
+      </div>
+
+      <div style="flex:1; min-height:0; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:13px;">
+        <div style="display:{{ formDisplay }}; flex-direction:column; gap:13px;">
+          <div style="display:flex; flex-direction:column; gap:5px;">
+            <span style="font-size:11.5px; color:#7d8c95;">ชื่อ · ภาษาไทยได้ (F2)</span>
+            <input ref="{{ nameRef }}" value="{{ draftName }}" onChange="{{ onName }}" style="height:34px; padding:0 10px; border-radius:5px; border:1px solid #2a363d; background:#0d1215; color:#e4ebee; font-size:14px; outline:none;">
+          </div>
+
+          <div style="display:grid; gap:9px; grid-template-columns:1fr 1fr;">
+            <sc-for list="{{ formSelects }}" as="f" hint-placeholder-count="5">
+              <div style="display:flex; flex-direction:column; gap:5px; grid-column:{{ f.span }};">
+                <span style="font-size:11.5px; color:#7d8c95;">{{ f.label }}</span>
+                <select value="{{ f.value }}" onChange="{{ f.onChange }}" style="height:32px; padding:0 8px; border-radius:5px; border:1px solid #2a363d; background:#0d1215; color:#e4ebee; font-size:13px; outline:none; cursor:pointer;">
+                  <sc-for list="{{ f.options }}" as="o" hint-placeholder-count="3">
+                    <option value="{{ o.v }}">{{ o.t }}</option>
+                  </sc-for>
+                </select>
+              </div>
+            </sc-for>
+          </div>
+
+          <div onClick="{{ onToggleDraftStar }}" style="display:flex; align-items:center; gap:9px; padding:9px 11px; border-radius:6px; cursor:pointer; border:1px solid {{ draftStar.border }}; background:{{ draftStar.bg }}; color:{{ draftStar.fg }};">
+            <span style="width:16px; height:16px; border-radius:3px; border:1px solid {{ draftStar.boxBorder }}; background:{{ draftStar.boxBg }}; display:flex; align-items:center; justify-content:center; font-size:11px; color:#06241a;">{{ draftStar.mark }}</span>
+            <span style="font-size:13.5px;">★ ไม้ตาย — ท่าที่ใช้จริงประจำ</span>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <span style="font-size:11.5px; color:#7d8c95;">แท็ก · สถานการณ์ที่ใช้ท่านี้</span>
+            <div style="display:flex; flex-wrap:wrap; gap:6px;">
+              <sc-for list="{{ draftTags }}" as="t" hint-placeholder-count="2">
+                <span style="display:flex; align-items:center; gap:6px; padding:4px 8px; border-radius:4px; background:#1b2428; border:1px solid #2a363d; font-size:12px; color:#cfd9de;">
+                  <span>{{ t.t }}</span>
+                  <span onClick="{{ t.onRemove }}" style="color:#8b9aa3; cursor:pointer; font-family:'IBM Plex Mono', monospace;">×</span>
+                </span>
+              </sc-for>
+              <input value="{{ tagInput }}" onChange="{{ onTagInput }}" onKeyDown="{{ onTagKey }}" placeholder="พิมพ์แล้ว Enter เช่น post-plant" style="flex:1; min-width:120px; height:28px; padding:0 9px; border-radius:4px; border:1px dashed #33424b; background:transparent; color:#e4ebee; font-size:12.5px; outline:none;">
+            </div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:5px;">
+            <span style="font-size:11.5px; color:#7d8c95;">โน้ต · แสดงแทนชื่อไฟล์บนจอที่สองตอนเล่น</span>
+            <textarea value="{{ draftNote }}" onChange="{{ onNote }}" rows="3" placeholder="ไม่บังคับ" style="padding:9px 10px; border-radius:5px; border:1px solid #2a363d; background:#0d1215; color:#e4ebee; font-size:13px; line-height:1.6; outline:none; resize:vertical;"></textarea>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:7px; padding:11px; border-radius:6px; background:#0f1619; border:1px solid #1e282e;">
+            <span style="font-size:11.5px; color:#7d8c95;">ของพ่วงที่ตามไฟล์ไปเสมอ</span>
+            <sc-for list="{{ attachments }}" as="a" hint-placeholder-count="5">
+              <div style="display:flex; align-items:center; gap:8px; font-size:12.5px;">
+                <span style="width:6px; height:6px; border-radius:50%; background:{{ a.dot }}; flex:none;"></span>
+                <span style="color:#cfd9de;">{{ a.label }}</span>
+                <span style="margin-left:auto; font-family:'IBM Plex Mono', monospace; font-size:11px; color:{{ a.fg }};">{{ a.value }}</span>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:6px; padding:11px; border-radius:6px; background:#0f1619; border:1px dashed #2a363d;">
+            <span style="font-size:11.5px; color:#7d8c95;">ปลายทางไฟล์หลังบันทึก</span>
+            <span style="font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:#a9b7bf; word-break:break-all; line-height:1.6;">{{ draftPath }}</span>
+            <span style="display:{{ moveHintDisplay }}; font-size:11.5px; color:#e2b464; line-height:1.5;">{{ moveHintText }}</span>
+          </div>
+        </div>
+
+        <div style="display:{{ noSelectionDisplay }}; flex-direction:column; align-items:center; gap:10px; padding:56px 10px; text-align:center;">
+          <span style="font-family:'IBM Plex Mono', monospace; font-size:24px; color:#2f3c44;">◻</span>
+          <span style="font-size:13.5px; color:#8b9aa3;">ยังไม่ได้เลือกรูป</span>
+          <span style="font-size:12px; color:#66757e; line-height:1.6;">คลิกรูปในคลังด้านซ้ายเพื่อเริ่มแก้ข้อมูลและจิ้มหมุด</span>
+        </div>
+      </div>
+
+      <div style="flex:none; display:{{ formDisplay }}; gap:8px; padding:12px; border-top:1px solid #232f36; background:#111819;">
+        <button onClick="{{ onSave }}" style="flex:1; height:36px; border:none; border-radius:6px; background:{{ saveBtn.bg }}; color:{{ saveBtn.fg }}; font-size:13.5px; font-weight:600; cursor:pointer;">{{ saveBtn.label }}</button>
+        <button onClick="{{ onRevert }}" style="flex:none; height:36px; padding:0 13px; border:1px solid #2a363d; border-radius:6px; background:#161e22; color:#cfd9de; font-size:13px; cursor:pointer;">คืนค่า</button>
+        <button onClick="{{ onAskDelete }}" style="flex:none; height:36px; padding:0 13px; border:1px solid rgba(224,140,140,0.4); border-radius:6px; background:rgba(224,140,140,0.1); color:#e08c8c; font-size:13px; cursor:pointer;">ลบ</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex:none; min-height:38px; display:flex; align-items:center; gap:14px; padding:0 16px; background:#141b1f; border-top:1px solid #27333a;">
+    <div style="display:flex; align-items:center; gap:9px; min-width:0;">
+      <span style="width:8px; height:8px; border-radius:50%; background:{{ toast.dot }}; flex:none;"></span>
+      <span style="font-size:12.5px; color:{{ toast.fg }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ toast.text }}</span>
+    </div>
+    <div style="display:{{ hintsDisplay }}; margin-left:auto; gap:14px; flex:none;">
+      <sc-for list="{{ hints }}" as="h" hint-placeholder-count="5">
+        <span style="display:flex; align-items:center; gap:6px; font-size:11.5px; color:#66757e;">
+          <span style="font-family:'IBM Plex Mono', monospace; font-size:10.5px; padding:2px 6px; border-radius:3px; background:#1b2428; border:1px solid #2a363d; color:#a9b7bf;">{{ h.k }}</span>
+          <span>{{ h.t }}</span>
+        </span>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display:{{ addDisplay }}; position:absolute; inset:0; background:rgba(6,9,11,0.72); align-items:center; justify-content:center; z-index:50;">
+    <div style="width:560px; max-width:92%; max-height:88%; overflow-y:auto; border-radius:10px; border:1px solid #2f3c44; background:#141b1f; box-shadow:0 24px 60px rgba(0,0,0,0.6);">
+      <div style="padding:16px 18px; border-bottom:1px solid #232f36; display:flex; align-items:center; gap:10px;">
+        <span style="font-size:16px; font-weight:600;">เพิ่มรูปเข้าคลัง</span>
+        <span onClick="{{ onCloseAdd }}" style="margin-left:auto; font-family:'IBM Plex Mono', monospace; color:#8b9aa3; cursor:pointer; font-size:16px;">×</span>
+      </div>
+      <div style="padding:18px; display:flex; flex-direction:column; gap:14px;">
+        <div onClick="{{ onFakeDrop }}" style="padding:22px; border-radius:8px; border:1px dashed #3a4a53; background:#0f1619; text-align:center; cursor:pointer;">
+          <div style="font-size:14px; color:#cfd9de;">ลากไฟล์มาวางที่นี่</div>
+          <div style="margin-top:6px; font-size:12px; color:#7d8c95; line-height:1.6;">หรือ Ctrl+V วางจากคลิปบอร์ดหลังแคปจอด้วย Win+Shift+S<br>รองรับ .png .jpg .jpeg .webp .bmp .gif · หลายไฟล์พร้อมกันได้</div>
+          <div style="margin-top:12px; display:inline-flex; height:32px; align-items:center; padding:0 14px; border-radius:6px; border:1px solid #2a363d; background:#161e22; color:#e4ebee; font-size:13px;">เลือกไฟล์…</div>
+        </div>
+
+        <div style="display:{{ pendingDisplay }}; flex-direction:column; gap:7px; padding:11px; border-radius:6px; background:#0f1619; border:1px solid #1e282e;">
+          <span style="font-size:11.5px; color:#7d8c95;">ไฟล์ที่จะเพิ่ม {{ pendingCount }} ไฟล์</span>
+          <sc-for list="{{ pendingFiles }}" as="f" hint-placeholder-count="3">
+            <div style="display:flex; align-items:center; gap:8px; font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:#a9b7bf;">
+              <span style="width:26px; height:18px; flex:none; border-radius:2px; background-color:#131a1e; background-image:repeating-linear-gradient(135deg, #1b252b 0 5px, #131a1e 5px 10px);"></span>
+              <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ f.t }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <span style="font-size:11.5px; color:#7d8c95;">ปลายทาง · เดาค่าให้จากตัวกรองและใบที่เลือกอยู่ โฟลเดอร์จะถูกสร้างให้เอง</span>
+          <div style="display:grid; gap:9px; grid-template-columns:1fr 1fr;">
+            <sc-for list="{{ addSelects }}" as="f" hint-placeholder-count="4">
+              <div style="display:flex; flex-direction:column; gap:5px;">
+                <span style="font-size:11.5px; color:#7d8c95;">{{ f.label }}</span>
+                <select value="{{ f.value }}" onChange="{{ f.onChange }}" style="height:32px; padding:0 8px; border-radius:5px; border:1px solid #2a363d; background:#0d1215; color:#e4ebee; font-size:13px; outline:none; cursor:pointer;">
+                  <sc-for list="{{ f.options }}" as="o" hint-placeholder-count="3">
+                    <option value="{{ o.v }}">{{ o.t }}</option>
+                  </sc-for>
+                </select>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:{{ addNameDisplay }}; flex-direction:column; gap:5px;">
+            <span style="font-size:11.5px; color:#7d8c95;">ชื่อ · ไฟล์เดียวตั้งชื่อได้เลย</span>
+            <input value="{{ addName }}" onChange="{{ onAddName }}" placeholder="เช่น เช็คBใน" style="height:32px; padding:0 10px; border-radius:5px; border:1px solid #2a363d; background:#0d1215; color:#e4ebee; font-size:13.5px; outline:none;">
+          </div>
+          <span style="display:{{ addMultiHintDisplay }}; font-size:11.5px; color:#7d8c95;">เพิ่มหลายไฟล์พร้อมกันจะใช้ชื่อไฟล์เดิม ชื่อที่ชนกันจะต่อท้ายเป็น (2), (3) ให้เอง</span>
+        </div>
+
+        <div style="padding:11px; border-radius:6px; background:#0f1619; border:1px dashed #2a363d; font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:#a9b7bf; word-break:break-all; line-height:1.6;">{{ addPath }}</div>
+      </div>
+      <div style="padding:14px 18px; border-top:1px solid #232f36; display:flex; gap:9px;">
+        <button onClick="{{ onConfirmAdd }}" style="flex:1; height:36px; border:none; border-radius:6px; background:#4ecf9a; color:#06241a; font-size:13.5px; font-weight:600; cursor:pointer;">เพิ่ม {{ pendingCount }} รูป และเปิดให้จิ้มหมุดต่อ</button>
+        <button onClick="{{ onCloseAdd }}" style="flex:none; height:36px; padding:0 15px; border:1px solid #2a363d; border-radius:6px; background:#161e22; color:#cfd9de; font-size:13px; cursor:pointer;">ยกเลิก</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:{{ confirmDisplay }}; position:absolute; inset:0; background:rgba(6,9,11,0.72); align-items:center; justify-content:center; z-index:60;">
+    <div style="width:480px; max-width:92%; border-radius:10px; border:1px solid {{ confirm.border }}; background:#141b1f; box-shadow:0 24px 60px rgba(0,0,0,0.6);">
+      <div style="padding:16px 18px; border-bottom:1px solid #232f36;">
+        <span style="font-size:16px; font-weight:600; color:{{ confirm.titleFg }};">{{ confirm.title }}</span>
+      </div>
+      <div style="padding:16px 18px; display:flex; flex-direction:column; gap:10px;">
+        <span style="font-size:13.5px; color:#cfd9de; line-height:1.6;">{{ confirm.body }}</span>
+        <div style="display:{{ confirm.listDisplay }}; flex-direction:column; gap:6px; padding:11px; border-radius:6px; background:#0f1619; border:1px solid #1e282e;">
+          <sc-for list="{{ confirm.lines }}" as="l" hint-placeholder-count="4">
+            <div style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:#a9b7bf;">
+              <span style="width:5px; height:5px; border-radius:50%; background:#55686f; flex:none;"></span>
+              <span>{{ l.t }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="padding:14px 18px; border-top:1px solid #232f36; display:flex; gap:9px;">
+        <button onClick="{{ onConfirm }}" style="flex:1; height:36px; border:none; border-radius:6px; background:{{ confirm.btnBg }}; color:{{ confirm.btnFg }}; font-size:13.5px; font-weight:600; cursor:pointer;">{{ confirm.btnLabel }}</button>
+        <button onClick="{{ onCancelConfirm }}" style="flex:none; height:36px; padding:0 15px; border:1px solid #2a363d; border-radius:6px; background:#161e22; color:#cfd9de; font-size:13px; cursor:pointer;">ยกเลิก</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;thumbCols&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:2,&quot;min&quot;:2,&quot;max&quot;:4,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;คลังรูป&quot;},&quot;mapFirst&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;จอทำงาน&quot;},&quot;showHints&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;แถบสถานะ&quot;}}">
+const MAPS = ["ascent","bind","haven","split","icebox","breeze","fracture","pearl","lotus","sunset","abyss","corrode","district"];
+const AGENTS = [
+  ["sova","โซวา",["รีคอน","ช็อก","นกฮูก"]],
+  ["cypher","ไซเฟอร์",["กับดัก","กล้อง","กรงควัน"]],
+  ["viper","ไวเปอร์",["ควัน","กำแพงพิษ","บ่อพิษ"]],
+  ["brimstone","เบรมสโตน",["ควัน","ลูกไฟ","สติม"]],
+  ["kayo","เคย์โอ",["มีด","แฟลช","เกรนาด"]],
+  ["fade","เฟด",["ปลิง","ตาปรุ","ความกลัว"]],
+  ["gekko","เกโค",["แว็ช","ดิซซี่","โมช"]],
+  ["killjoy","คิลจอย",["บอท","ป้อม","กรงนาโน"]],
+  ["astra","แอสตรา",["ดาว","หลุมดำ","กำแพง"]],
+  ["harbor","ฮาร์เบอร์",["กำแพงน้ำ","โพรง","น้ำวน"]],
+  ["sky","สกาย",["นกแฟลช","หมาป่า","ควันรักษา"]],
+  ["breach","เบรค",["แฟลช","แผ่นดินไหว","ระเบิด"]]
+];
+const SKILLS = ["รีคอน","ช็อก","นกฮูก","กับดัก","กล้อง","กรงควัน","ควัน","ลูกไฟ","แฟลช","เกรนาด","กำแพงพิษ","มีด"];
+const SIDES = [["attack","บุก"],["defend","ตั้งรับ"]];
+const SITES = ["A","B","C"];
+const ZONES = [
+  ["A Main",26,22],["A Lobby",17,38],["A Site",30,14],["Mid Courtyard",50,47],["Mid Top",50,30],
+  ["Mid Bottom",50,64],["B Main",74,74],["B Lobby",83,60],["B Site",70,84],["Attacker Spawn",50,91],
+  ["Defender Spawn",50,8],["Vent",65,42],["Tower",38,58]
+];
+const SEED = [
+  ["A main","ascent","attack","A","sova","รีคอน",1,1,1,["exec"],"ยิงจากมุมซ้ายสุด เล็งขอบกล่อง"],
+  ["ในA","ascent","attack","A","sova","ช็อก",0,1,0,["post-plant"],""],
+  ["จุดวางB","ascent","attack","B","sova","ช็อก",1,1,0,["post-plant"],"ลูกลงกลางจุดวาง"],
+  ["เช็คBใน","ascent","defend","B","sova","รีคอน",0,1,1,["retake"],""],
+  ["ช่วยในB","ascent","defend","B","sova","ช็อก",0,0,0,[],""],
+  ["ทางเข้าA","bind","attack","A","sova","รีคอน",1,1,0,["exec"],""],
+  ["รูทางเข้าA","bind","attack","A","sova","ช็อก",0,0,0,[],""],
+  ["ทางเดินมาAรีเทคA","bind","defend","A","sova","รีคอน",0,1,0,["retake"],"ยืนหลังกล่อง หันหาประตู"],
+  ["B elbow ไป backsite","bind","attack","B","sova","ช็อก",0,1,1,["exec"],""],
+  ["B lobby deep","bind","defend","B","sova","รีคอน",0,0,0,[],""],
+  ["เช็คมิดจากสปอน","haven","attack","C","sova","รีคอน",1,1,0,["opening"],""],
+  ["Cลองจากมิด","haven","attack","C","sova","ช็อก",0,1,0,["post-plant"],""],
+  ["ในAจากซี","haven","defend","A","sova","รีคอน",0,0,0,[],""],
+  ["กับดักประตูB","haven","defend","B","cypher","กับดัก",1,1,0,["anti-rush"],"กันรัชช่วงต้นราวด์"],
+  ["กล้องมุมมิด","haven","defend","C","cypher","กล้อง",0,0,0,["info"],""],
+  ["สายฮีเวนมิด","split","attack","A","sova","รีคอน",0,1,0,[],""],
+  ["ขึ้นหอA","split","attack","A","sova","ช็อก",1,1,1,["exec"],""],
+  ["Bใต้ถุน","split","attack","B","sova","ช็อก",0,0,0,[],""],
+  ["ควันปิดมิด","split","defend","B","viper","ควัน",0,1,0,["anti-cypher"],""],
+  ["เช็คท่อ","icebox","attack","B","sova","รีคอน",0,1,0,[],""],
+  ["ยอดBท่อ","icebox","attack","B","sova","ช็อก",1,0,0,["post-plant"],""],
+  ["Aเบลลี่","icebox","defend","A","sova","รีคอน",0,0,0,[],""],
+  ["กับดักบันไดA","icebox","defend","A","cypher","กับดัก",0,1,0,["anti-rush"],""],
+  ["ฮอลล์กลาง","breeze","attack","A","sova","รีคอน",1,1,1,["opening"],"เห็นทั้งฮอลล์"],
+  ["ถ้ำมิด","breeze","attack","B","sova","ช็อก",0,0,0,[],""],
+  ["Bใหญ่","breeze","defend","B","sova","รีคอน",0,1,0,["retake"],""],
+  ["สะพานA","fracture","attack","A","sova","รีคอน",0,0,0,[],""],
+  ["ท่อเข้าB","fracture","attack","B","sova","ช็อก",1,1,0,["exec"],""],
+  ["ลานหน้าA","pearl","attack","A","sova","รีคอน",0,1,0,[],""],
+  ["ลิงก์มิด","pearl","defend","B","cypher","กล้อง",0,0,0,["info"],""],
+  ["ในAดอกบัว","lotus","attack","A","sova","ช็อก",0,1,1,["post-plant"],""],
+  ["ประตูหมุนC","lotus","defend","C","sova","รีคอน",0,0,0,[],""],
+  ["ตลาดB","sunset","attack","B","sova","รีคอน",1,1,0,["exec"],""],
+  ["มิดคอร์ท","sunset","defend","A","viper","ควัน",0,0,0,[],""],
+  ["A main","abyss","attack","A","sova","รีคอน",1,1,0,["exec"],"ยืนริมขอบ ระวังตก"],
+  ["เช็คBใน","abyss","defend","B","sova","ช็อก",0,1,1,["retake"],""],
+  ["ทางขึ้นA","corrode","attack","A","sova","รีคอน",0,0,0,[],""],
+  ["กับดักหลังB","corrode","defend","B","cypher","กับดัก",0,1,0,["anti-rush"],""],
+  ["สายเข้าA","district","attack","A","sova","ช็อก",0,0,0,[],""],
+  ["มุมBตั้งรับ","district","defend","B","sova","รีคอน",0,1,0,[],""]
+];
+const OK = { dot:"#4ecf9a", fg:"#9fe0c4" };
+const WARN = { dot:"#e2b464", fg:"#e2b464" };
+const ERR = { dot:"#e08c8c", fg:"#e08c8c" };
+const INFO = { dot:"#55686f", fg:"#8b9aa3" };
+
+class Component extends DCLogic {
+  state = this.initState();
+
+  initState() {
+    let id = 0;
+    const items = SEED.map(function (r) {
+      id += 1;
+      const base = 18 + ((id * 37) % 64);
+      const stand = { x: base, y: 20 + ((id * 53) % 60) };
+      const land = { x: 20 + ((id * 29) % 62), y: 18 + ((id * 41) % 62) };
+      return {
+        id: id, name: r[0], map: r[1], side: r[2], site: r[3], agent: r[4], skill: r[5],
+        star: !!r[6], pin: r[7] ? { a: stand, b: land } : null, gif: !!r[8],
+        tags: r[9].slice(), note: r[10], uses: (id * 7) % 23
+      };
+    });
+    return {
+      items: items,
+      selected: [items[0].id],
+      primaryId: items[0].id,
+      draft: Object.assign({}, items[0]),
+      query: "",
+      filters: { map: "", side: "", site: "", agent: "", skill: "", star: false, unpinned: false },
+      zoom: 1, rotation: 0, mapFocus: !!this.props.mapFirst,
+      pendingFirst: null, siteMode: "", siteLabels: { A: { x: 30, y: 18 }, B: { x: 72, y: 80 } },
+      drawerOpen: true, tagInput: "", mapFirstApplied: false,
+      addOpen: false, addCount: 1, addName: "", addDest: { map: "", side: "", site: "", agent: "" },
+      confirm: null,
+      toast: { text: "พร้อมใช้งาน · เลือกรูปจากคลังเพื่อเริ่มแก้ข้อมูลและจิ้มหมุด", kind: "info" }
+    };
+  }
+
+  componentDidMount() {
+    if (this.props.mapFirst && !this.state.mapFocus) this.setState({ mapFocus: true, mapFirstApplied: true });
+    this.onKey = (e) => {
+      const tag = (e.target && e.target.tagName || "").toLowerCase();
+      const typing = tag === "input" || tag === "textarea" || tag === "select";
+      if (e.key === "v" && (e.ctrlKey || e.metaKey) && !typing) { e.preventDefault(); this.openAdd(1); this.say("วางรูปจากคลิปบอร์ด 1 รูป · ตรวจปลายทางแล้วกดเพิ่ม", "ok"); return; }
+      if (e.key === "Delete" && !typing) { e.preventDefault(); this.askDelete(); return; }
+      if (e.key === "F2" && !typing) { e.preventDefault(); if (this.nameEl) { this.nameEl.focus(); this.nameEl.select(); } this.say("แก้ชื่อใบที่เลือก", "info"); return; }
+      if (e.key === "Escape") {
+        if (this.state.addOpen || this.state.confirm) { this.setState({ addOpen: false, confirm: null }); return; }
+        if (this.state.siteMode) { this.setState({ siteMode: "" }); this.say("ยกเลิกโหมดวางป้ายจุด", "info"); }
+        return;
+      }
+      if (e.key === "Backspace" && !typing && this.state.pendingFirst) {
+        e.preventDefault(); this.setState({ pendingFirst: null }); this.say("ยกเลิกคลิกแรกแล้ว · คลิกใหม่เพื่อวางจุดยืน", "info");
+      }
+    };
+    window.addEventListener("keydown", this.onKey);
+  }
+  componentWillUnmount() { window.removeEventListener("keydown", this.onKey); }
+
+  say(text, kind) { this.setState({ toast: { text: text, kind: kind || "info" } }); }
+  agentName(k) { const a = AGENTS.find((x) => x[0] === k); return a ? a[1] : k; }
+  sideName(k) { const s = SIDES.find((x) => x[0] === k); return s ? s[1] : k; }
+  path(it) { return "lineups/" + it.map + "/" + it.side + "/" + it.agent + "/" + it.site + "/" + it.name + ".png"; }
+
+  visible() {
+    const f = this.state.filters, q = this.state.query.trim().toLowerCase();
+    return this.state.items.filter(function (it) {
+      if (f.map && it.map !== f.map) return false;
+      if (f.side && it.side !== f.side) return false;
+      if (f.site && it.site !== f.site) return false;
+      if (f.agent && it.agent !== f.agent) return false;
+      if (f.skill && it.skill !== f.skill) return false;
+      if (f.star && !it.star) return false;
+      if (f.unpinned && it.pin) return false;
+      if (q && it.name.toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    });
+  }
+  primary() { const id = this.state.primaryId; return this.state.items.find((x) => x.id === id) || null; }
+  dirty() {
+    const p = this.primary(), d = this.state.draft;
+    if (!p || !d) return false;
+    return p.name !== d.name || p.map !== d.map || p.side !== d.side || p.site !== d.site ||
+      p.agent !== d.agent || p.skill !== d.skill || p.star !== d.star || p.note !== d.note ||
+      p.tags.join(",") !== d.tags.join(",");
+  }
+
+  select(it, e) {
+    const multi = e && (e.ctrlKey || e.metaKey || e.shiftKey);
+    if (multi) {
+      const sel = this.state.selected.slice();
+      const i = sel.indexOf(it.id);
+      if (i >= 0) sel.splice(i, 1); else sel.push(it.id);
+      this.setState({ selected: sel, primaryId: it.id, draft: Object.assign({}, it), pendingFirst: null });
+      this.say("เลือกอยู่ " + sel.length + " ใบ · ตั้งค่าหลายใบพร้อมกันได้ที่แถบล่างซ้าย", "info");
+      return;
+    }
+    this.setState({ selected: [it.id], primaryId: it.id, draft: Object.assign({}, it), pendingFirst: null, zoom: 1, tagInput: "" });
+    this.say(it.pin ? "เปิด " + it.name + " · จิ้มหมุดแล้ว" : "เปิด " + it.name + " · ยังไม่จิ้มหมุด", it.pin ? "info" : "warn");
+  }
+
+  setDraft(patch) { this.setState({ draft: Object.assign({}, this.state.draft, patch) }); }
+
+  uniqueName(name, map, side, site, agent, ignoreId) {
+    const items = this.state.items;
+    const taken = function (n) {
+      return items.some(function (x) {
+        return x.id !== ignoreId && x.map === map && x.side === side && x.site === site && x.agent === agent && x.name === n;
+      });
+    };
+    if (!taken(name)) return name;
+    let i = 2;
+    while (taken(name + " (" + i + ")")) i += 1;
+    return name + " (" + i + ")";
+  }
+
+  save() {
+    const p = this.primary(), d = this.state.draft;
+    if (!p) { this.say("ยังไม่ได้เลือกรูป — เลือกใบที่จะแก้ก่อน", "err"); return; }
+    if (!d.name.trim()) { this.say("บันทึกไม่ได้ เพราะชื่อว่าง — ชื่อคือชื่อไฟล์จริงบนดิสก์", "err"); return; }
+    const changes = [];
+    const finalName = this.uniqueName(d.name.trim(), d.map, d.side, d.site, d.agent, p.id);
+    if (finalName !== d.name.trim()) changes.push("ชื่อชนกับของเดิม จึงบันทึกเป็น " + finalName);
+    if (p.name !== finalName) changes.push("เปลี่ยนชื่อ " + p.name + " → " + finalName);
+    if (p.map !== d.map) changes.push("ย้ายแมพ " + p.map + " → " + d.map);
+    if (p.side !== d.side) changes.push("เปลี่ยนฝั่ง " + this.sideName(p.side) + " → " + this.sideName(d.side));
+    if (p.site !== d.site) changes.push("เปลี่ยนจุด " + p.site + " → " + d.site);
+    if (p.agent !== d.agent) changes.push("เปลี่ยนตัวละคร " + this.agentName(p.agent) + " → " + this.agentName(d.agent) + " (สร้างโฟลเดอร์ให้เอง)");
+    if (p.skill !== d.skill) changes.push("ตั้งสกิลเป็น " + (d.skill || "ไม่ระบุ"));
+    if (p.star !== d.star) changes.push(d.star ? "ตั้งเป็นไม้ตาย" : "เอาไม้ตายออก");
+    if (p.note !== d.note) changes.push("แก้โน้ต");
+    if (p.tags.join(",") !== d.tags.join(",")) changes.push("แก้แท็ก");
+    if (!changes.length) { this.say("ไม่มีอะไรเปลี่ยน", "info"); return; }
+    const moved = p.map !== d.map || p.side !== d.side || p.site !== d.site || p.agent !== d.agent || p.name !== finalName;
+    const next = Object.assign({}, p, d, { name: finalName, tags: d.tags.slice() });
+    this.setState({
+      items: this.state.items.map((x) => (x.id === p.id ? next : x)),
+      draft: Object.assign({}, next)
+    });
+    this.say("บันทึกแล้ว · " + changes.join(" · ") + (moved ? " · ไฟล์และของพ่วงทั้ง 5 อย่างถูกย้ายไปที่ " + this.path(next) : ""), "ok");
+  }
+
+  askDelete() {
+    const p = this.primary();
+    if (!p) { this.say("ลบไม่ได้ เพราะยังไม่ได้เลือกรูป", "err"); return; }
+    const lines = [
+      { t: "ไฟล์รูป " + this.path(p) },
+      { t: p.gif ? "ไฟล์คลิป .gif ถูกย้ายไปด้วย" : "ไม่มีไฟล์คลิป .gif" },
+      { t: p.note ? "ไฟล์โน้ต .txt ถูกย้ายไปด้วย" : "ไม่มีไฟล์โน้ต .txt" },
+      { t: p.pin ? "หมุดบนแผนที่จะถูกล้าง" : "ไม่มีหมุดบนแผนที่" },
+      { t: "สถิติการใช้งาน " + p.uses + " ครั้ง จะถูกล้าง" },
+      { t: p.tags.length ? "แท็ก " + p.tags.join(", ") + " จะถูกล้าง" : "ไม่มีแท็ก" }
+    ];
+    this.setState({
+      confirm: {
+        kind: "delete", title: "ลบ " + p.name + " ?",
+        body: "ไฟล์จะถูกย้ายเข้าโฟลเดอร์ .trash ไม่ได้ลบถาวร เอากลับมาเองได้ สิ่งที่ไปด้วย:",
+        lines: lines, btnLabel: "ย้ายเข้า .trash", tone: "danger"
+      }
+    });
+  }
+
+  runConfirm() {
+    const c = this.state.confirm;
+    if (!c) return;
+    if (c.kind === "delete") {
+      const p = this.primary();
+      const rest = this.state.items.filter((x) => x.id !== p.id);
+      const nextPrimary = rest[0] || null;
+      this.setState({
+        items: rest, confirm: null,
+        selected: nextPrimary ? [nextPrimary.id] : [],
+        primaryId: nextPrimary ? nextPrimary.id : 0,
+        draft: nextPrimary ? Object.assign({}, nextPrimary) : null
+      });
+      this.say("ย้าย " + p.name + " เข้า .trash แล้ว พร้อมของพ่วงทั้งหมด · หมุดและสถิติถูกล้าง", "ok");
+      return;
+    }
+    if (c.kind === "bulk") {
+      const ids = this.state.selected;
+      const patch = c.patch;
+      this.setState({
+        items: this.state.items.map(function (x) { return ids.indexOf(x.id) >= 0 ? Object.assign({}, x, patch) : x; }),
+        confirm: null
+      });
+      const p2 = this.primary();
+      if (p2 && ids.indexOf(p2.id) >= 0) this.setState({ draft: Object.assign({}, p2, patch) });
+      this.say(c.done.replace("{n}", String(ids.length)), "ok");
+      return;
+    }
+    this.setState({ confirm: null });
+  }
+
+  askBulk(patch, label, done) {
+    const n = this.state.selected.length;
+    if (n < 2) { this.say("เลือกอย่างน้อย 2 ใบก่อน (Ctrl+คลิก)", "err"); return; }
+    this.setState({
+      confirm: {
+        kind: "bulk", title: label.replace("{n}", String(n)),
+        body: "คำสั่งนี้จะเขียนทับค่าเดิมของทั้ง " + n + " ใบ ไฟล์จะไม่ถูกย้ายถ้าไม่ได้เปลี่ยนตัวละคร",
+        lines: this.state.items.filter((x) => this.state.selected.indexOf(x.id) >= 0).slice(0, 6).map((x) => ({ t: x.name + " · " + x.map + " · " + this.agentName(x.agent) })),
+        btnLabel: "ยืนยันกับ " + n + " ใบ", tone: "ok", patch: patch, done: done
+      }
+    });
+  }
+
+  mapClick(e) {
+    const p = this.primary();
+    if (!p) { this.say("จิ้มหมุดไม่ได้ เพราะยังไม่ได้เลือกรูป", "err"); return; }
+    if (!this.mapEl) return;
+    const r = this.mapEl.getBoundingClientRect();
+    const rad = (-this.state.rotation * Math.PI) / 180;
+    const dx = e.clientX - r.left - r.width / 2;
+    const dy = e.clientY - r.top - r.height / 2;
+    const rx = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const ry = dx * Math.sin(rad) + dy * Math.cos(rad);
+    const x = Math.max(0, Math.min(100, (rx / r.width + 0.5) * 100));
+    const y = Math.max(0, Math.min(100, (ry / r.height + 0.5) * 100));
+    if (this.state.siteMode) {
+      const labels = Object.assign({}, this.state.siteLabels);
+      labels[this.state.siteMode] = { x: x, y: y };
+      this.setState({ siteLabels: labels, siteMode: "" });
+      this.say("วางป้ายจุด " + this.state.siteMode + " ของแมพ " + p.map + " แล้ว", "ok");
+      return;
+    }
+    if (!this.state.pendingFirst) {
+      const near = this.state.items.find((it) => it.id !== p.id && it.map === p.map && it.side === p.side && it.pin &&
+        Math.hypot(it.pin.a.x - x, it.pin.a.y - y) < 3.2);
+      if (near) {
+        this.setState({ pendingFirst: { x: near.pin.a.x, y: near.pin.a.y } });
+        this.say("รวมจุดยืนเข้ากับหมุดเดิมของ " + near.name + " · คลิกที่ 2 เพื่อบอกจุดที่ลูกไปตก", "ok");
+        return;
+      }
+      this.setState({ pendingFirst: { x: x, y: y } });
+      this.say("รับจุดยืนแล้ว · คลิกที่ 2 เพื่อบอกจุดที่ลูกไปตก หรือ Backspace เพื่อยกเลิก", "info");
+      return;
+    }
+    const pin = { a: this.state.pendingFirst, b: { x: x, y: y } };
+    this.setState({
+      items: this.state.items.map((x2) => (x2.id === p.id ? Object.assign({}, x2, { pin: pin }) : x2)),
+      pendingFirst: null
+    });
+    const left = this.state.items.filter((x2) => !x2.pin && x2.id !== p.id).length;
+    this.say("จิ้มหมุด " + p.name + " ครบแล้ว · ทั้งคลังเหลือที่ยังไม่จิ้ม " + left + " ใบ", "ok");
+  }
+
+  openAdd(count) {
+    const p = this.primary(), f = this.state.filters;
+    this.setState({
+      addOpen: true, addCount: count,
+      addName: count === 1 ? "" : "",
+      addDest: {
+        map: f.map || (p ? p.map : MAPS[0]),
+        side: f.side || (p ? p.side : "attack"),
+        site: f.site || (p ? p.site : "A"),
+        agent: f.agent || (p ? p.agent : "sova")
+      }
+    });
+  }
+
+  confirmAdd() {
+    const d = this.state.addDest, n = this.state.addCount;
+    let id = this.state.items.reduce((m, x) => Math.max(m, x.id), 0);
+    const added = [];
+    for (let i = 0; i < n; i += 1) {
+      id += 1;
+      const raw = n === 1 ? (this.state.addName.trim() || "ไลน์อัพใหม่") : "screenshot_" + (i + 1);
+      added.push({
+        id: id, name: this.uniqueName(raw, d.map, d.side, d.site, d.agent, 0),
+        map: d.map, side: d.side, site: d.site, agent: d.agent, skill: "",
+        star: false, pin: null, gif: false, tags: [], note: "", uses: 0
+      });
+    }
+    const items = this.state.items.concat(added);
+    const first = added[0];
+    this.setState({
+      items: items, addOpen: false,
+      filters: { map: "", side: "", site: "", agent: "", skill: "", star: false, unpinned: false },
+      query: "", selected: added.map((a) => a.id), primaryId: first.id, draft: Object.assign({}, first),
+      mapFocus: true
+    });
+    this.say("เพิ่ม " + n + " รูปเข้า " + "lineups/" + d.map + "/" + d.side + "/" + d.agent + "/" + d.site + "/ แล้ว · ล้างตัวกรองให้เห็นรูปใหม่ทันที · เปิดแผนที่ให้จิ้มหมุดต่อ", "ok");
+  }
+
+  renderVals() {
+    const st = this.state, f = st.filters;
+    const shown = this.visible();
+    const p = this.primary();
+    const d = st.draft;
+    const dirty = this.dirty();
+    const focusMap = st.mapFocus;
+    const small = { inset: "auto 18px 18px auto", w: "300px", h: "196px", z: 3, border: "#3a4a53", shadow: "0 14px 34px rgba(0,0,0,0.55)", toolsDisplay: "none", swapDisplay: "flex" };
+    const big = { inset: "0", w: "auto", h: "auto", z: 1, border: "#27333a", shadow: "none", toolsDisplay: "flex", swapDisplay: "none" };
+    const toastTone = { ok: OK, warn: WARN, err: ERR, info: INFO }[st.toast.kind] || INFO;
+
+    const chip = (on) => on
+      ? { bg: "rgba(78,207,154,0.13)", border: "rgba(78,207,154,0.45)", fg: "#4ecf9a" }
+      : { bg: "#0d1215", border: "#2a363d", fg: "#a9b7bf" };
+
+    const mk = (label, key, opts) => ({
+      label: label, value: f[key], options: opts,
+      onChange: (e) => { const v = e.target.value; this.setState({ filters: Object.assign({}, f, { [key]: v }) }); },
+      bg: f[key] ? "rgba(78,207,154,0.1)" : "#0d1215",
+      border: f[key] ? "rgba(78,207,154,0.4)" : "#2a363d",
+      fg: f[key] ? "#7fe1b8" : "#e4ebee"
+    });
+
+    const pinLeft = st.items.filter((x) => !x.pin).length;
+    const myPins = [];
+    if (st.pendingFirst) myPins.push({ x: st.pendingFirst.x, y: st.pendingFirst.y, size: "14px", off: "-7px", color: "#4ecf9a", halo: "rgba(78,207,154,0.28)" });
+    else if (p && p.pin) {
+      myPins.push({ x: p.pin.a.x, y: p.pin.a.y, size: "14px", off: "-7px", color: "#4ecf9a", halo: "rgba(78,207,154,0.25)" });
+      if (p.pin.b) myPins.push({ x: p.pin.b.x, y: p.pin.b.y, size: "12px", off: "-6px", color: "#e2b464", halo: "rgba(226,180,100,0.25)" });
+    }
+    let pinLine = { display: "none", x: 0, y: 0, len: 0, angle: 0 };
+    if (p && p.pin && p.pin.b && !st.pendingFirst) {
+      const ddx = p.pin.b.x - p.pin.a.x, ddy = p.pin.b.y - p.pin.a.y;
+      pinLine = { display: "block", x: p.pin.a.x, y: p.pin.a.y, len: Math.hypot(ddx, ddy), angle: (Math.atan2(ddy, ddx) * 180) / Math.PI };
+    }
+
+    let pinStatus = { text: "เลือกรูปก่อน แล้วคลิกบนแผนที่ 2 ครั้ง", bg: "#0f1619", border: "#1e282e", fg: "#8b9aa3" };
+    if (st.siteMode) pinStatus = { text: "กำลังรอคลิกวางป้ายจุด " + st.siteMode + " · Esc เพื่อยกเลิก", bg: "rgba(226,180,100,0.12)", border: "rgba(226,180,100,0.45)", fg: "#e2b464" };
+    else if (st.pendingFirst) pinStatus = { text: "กำลังรอคลิกที่ 2 — จุดที่ลูกไปตก · Backspace เพื่อยกเลิกคลิกแรก", bg: "rgba(226,180,100,0.12)", border: "rgba(226,180,100,0.45)", fg: "#e2b464" };
+    else if (p && p.pin) pinStatus = { text: "จิ้มหมุดแล้ว · เขียว = จุดยืน เหลือง = จุดที่ลูกตก คลิกใหม่เพื่อจิ้มทับ", bg: "rgba(78,207,154,0.1)", border: "rgba(78,207,154,0.38)", fg: "#9fe0c4" };
+    else if (p) pinStatus = { text: "ยังไม่จิ้มหมุด · คลิกที่ 1 = จุดที่เรายืน คลิกที่ 2 = จุดที่ลูกไปตก", bg: "rgba(226,180,100,0.1)", border: "rgba(226,180,100,0.38)", fg: "#e2b464" };
+
+    const agentOpts = AGENTS.map((a) => ({ v: a[0], t: a[1] }));
+    const skillOpts = [{ v: "", t: "— ไม่ระบุ —" }].concat(SKILLS.map((s) => ({ v: s, t: s })));
+
+    return {
+      thumbCols: this.props.thumbCols || 2,
+      libWidth: this.props.thumbCols >= 3 ? "360px" : "268px",
+      hintsDisplay: this.props.showHints === false ? "none" : "flex",
+      hints: [
+        { k: "Ctrl+V", t: "วางรูปจากคลิปบอร์ด" }, { k: "Delete", t: "ลบใบที่เลือก" },
+        { k: "F2", t: "แก้ชื่อ" }, { k: "Esc", t: "เลิกวางป้ายจุด" }, { k: "Backspace", t: "เลิกคลิกแรก" }
+      ],
+
+      query: st.query,
+      onQuery: (e) => this.setState({ query: e.target.value }),
+      clearQueryDisplay: st.query ? "inline" : "none",
+      onClearQuery: () => this.setState({ query: "" }),
+      countText: "แสดง " + shown.length + " / " + st.items.length + " ใบ",
+      unpinnedCount: pinLeft,
+      onOnlyUnpinned: () => { this.setState({ filters: Object.assign({}, f, { unpinned: true }) }); this.say("กรองเฉพาะที่ยังไม่จิ้มหมุด " + pinLeft + " ใบ", "info"); },
+      onOpenAdd: () => this.openAdd(3),
+
+      filterSelects: [
+        mk("แมพ", "map", [{ v: "", t: "— ทั้งหมด —" }].concat(MAPS.map((m) => ({ v: m, t: m })))),
+        mk("ฝั่ง", "side", [{ v: "", t: "— ทั้งหมด —" }].concat(SIDES.map((s) => ({ v: s[0], t: s[1] })))),
+        mk("จุด", "site", [{ v: "", t: "— ทั้งหมด —" }].concat(SITES.map((s) => ({ v: s, t: s })))),
+        mk("ตัวละคร", "agent", [{ v: "", t: "— ทั้งหมด —" }].concat(agentOpts)),
+        mk("สกิล", "skill", [{ v: "", t: "— ทั้งหมด —" }].concat(SKILLS.map((s) => ({ v: s, t: s }))))
+      ],
+      starChip: chip(f.star), unpinChip: chip(f.unpinned),
+      onToggleStar: () => this.setState({ filters: Object.assign({}, f, { star: !f.star }) }),
+      onToggleUnpinned: () => this.setState({ filters: Object.assign({}, f, { unpinned: !f.unpinned }) }),
+      onResetFilters: () => { this.setState({ filters: { map: "", side: "", site: "", agent: "", skill: "", star: false, unpinned: false }, query: "" }); this.say("ล้างตัวกรองแล้ว · เห็นทั้งคลัง " + st.items.length + " ใบ", "info"); },
+
+      items: shown.map((it) => ({
+        name: it.name, map: it.map,
+        sideSite: this.sideName(it.side) + " · จุด " + it.site,
+        agentSkill: this.agentName(it.agent) + (it.skill ? " · " + it.skill : " · ยังไม่ระบุสกิล"),
+        ring: it.id === st.primaryId ? "#4ecf9a" : (st.selected.indexOf(it.id) >= 0 ? "rgba(78,207,154,0.5)" : "transparent"),
+        nameFg: it.id === st.primaryId ? "#e4ebee" : "#cfd9de",
+        starDisplay: it.star ? "inline" : "none",
+        gifDisplay: it.gif ? "inline" : "none",
+        pinDot: it.pin ? "#4ecf9a" : "#e2b464",
+        onClick: (e) => this.select(it, e)
+      })),
+      emptyDisplay: shown.length ? "none" : "flex",
+      emptyTitle: st.items.length ? "กรองแล้วไม่เจอ" : "คลังว่างเปล่า",
+      emptyHint: st.items.length ? "ไม่มีใบไหนตรงกับตัวกรองและคำค้นที่เปิดอยู่" : "ลากไฟล์มาวาง หรือกด Ctrl+V หลังแคปจอ",
+      emptyBtnDisplay: st.items.length ? "block" : "none",
+      onSelectAllShown: () => { this.setState({ selected: shown.map((x) => x.id) }); this.say("เลือก " + shown.length + " ใบที่กรองอยู่", "info"); },
+
+      bulkDisplay: st.selected.length > 1 ? "flex" : "none",
+      selCount: st.selected.length,
+      onClearSelection: () => this.setState({ selected: st.primaryId ? [st.primaryId] : [] }),
+      bulkSkill: "", bulkAgent: "",
+      bulkSkillOptions: [{ v: "", t: "ตั้งสกิลให้ทุกใบ…" }].concat(SKILLS.map((s) => ({ v: s, t: s }))),
+      bulkAgentOptions: [{ v: "", t: "ตั้งตัวละครให้ทุกใบ…" }].concat(agentOpts),
+      onBulkSkill: (e) => { const v = e.target.value; if (v) this.askBulk({ skill: v }, "ตั้งสกิล " + v + " ให้ {n} ใบ ?", "ตั้งสกิล " + v + " ให้ {n} ใบแล้ว"); },
+      onBulkAgent: (e) => { const v = e.target.value; if (v) this.askBulk({ agent: v }, "ตั้งตัวละคร " + this.agentName(v) + " ให้ {n} ใบ ?", "ตั้งตัวละคร " + this.agentName(v) + " ให้ {n} ใบแล้ว · ไฟล์ถูกย้ายเข้าโฟลเดอร์ตัวละครใหม่"); },
+      onBulkStarOn: () => this.askBulk({ star: true }, "ตั้ง {n} ใบเป็นไม้ตาย ?", "ตั้ง {n} ใบเป็นไม้ตายแล้ว"),
+      onBulkStarOff: () => this.askBulk({ star: false }, "เอาไม้ตายออกจาก {n} ใบ ?", "เอาไม้ตายออกจาก {n} ใบแล้ว"),
+
+      primaryName: p ? p.name : "ยังไม่ได้เลือกรูป",
+      primaryPath: p ? this.path(p) : "",
+      primaryMapLabel: p ? p.map : "—",
+      gifBadgeDisplay: p && p.gif ? "inline" : "none",
+      pinBadge: p && p.pin
+        ? { text: "จิ้มหมุดแล้ว", bg: "rgba(78,207,154,0.12)", border: "rgba(78,207,154,0.38)", fg: "#4ecf9a" }
+        : { text: "ยังไม่จิ้มหมุด", bg: "rgba(226,180,100,0.1)", border: "rgba(226,180,100,0.38)", fg: "#e2b464" },
+      drawerLabel: st.drawerOpen ? "ซ่อนแผงข้อมูล" : "แสดงแผงข้อมูล",
+      onToggleDrawer: () => this.setState({ drawerOpen: !st.drawerOpen }),
+      drawerWidth: st.drawerOpen ? "min(356px, 34vw)" : "0px",
+
+      imgBox: focusMap ? small : big,
+      mapBox: focusMap ? big : small,
+      onFocusMap: () => this.setState({ mapFocus: true }),
+      onFocusImage: () => this.setState({ mapFocus: false }),
+      viewerDisplay: p ? "flex" : "none",
+      viewerEmptyDisplay: p ? "none" : "flex",
+      viewerEmptyText: st.items.length ? "ยังไม่ได้เลือกรูป" : "คลังว่างเปล่า",
+      viewerWidth: Math.round(st.zoom * 100) + "%",
+      zoomText: Math.round(st.zoom * 100) + "%",
+      onZoomIn: () => this.setState({ zoom: Math.min(4, st.zoom * 1.25) }),
+      onZoomOut: () => this.setState({ zoom: Math.max(0.5, st.zoom / 1.25) }),
+      onZoomFit: () => { this.setState({ zoom: 1 }); this.say("กลับไปขนาดพอดีจอ", "info"); },
+
+      mapRef: (el) => { this.mapEl = el; },
+      onMapClick: (e) => this.mapClick(e),
+      mapCursor: p ? "crosshair" : "not-allowed",
+      rotation: st.rotation,
+      counterRotation: -st.rotation,
+      rotationText: st.rotation + "°",
+      onRotate: (e) => this.setState({ rotation: Number(e.target.value) }),
+      onRotateStep: () => this.setState({ rotation: (st.rotation + 90) % 360 }),
+      onRotateReset: () => this.setState({ rotation: 0 }),
+      zoneFontSize: focusMap ? "10.5px" : "7px",
+      siteFontSize: focusMap ? "12px" : "8px",
+      zoneLabels: ZONES.map((z) => ({ t: z[0], x: z[1], y: z[2] })),
+      siteLabels: Object.keys(st.siteLabels).map((k) => ({ t: k, x: st.siteLabels[k].x, y: st.siteLabels[k].y })),
+      contextPins: p ? st.items.filter((x) => x.id !== p.id && x.map === p.map && x.side === p.side && x.pin).map((x) => ({ x: x.pin.a.x, y: x.pin.a.y })) : [],
+      myPins: myPins,
+      pinLine: pinLine,
+      coordDisplay: focusMap ? "block" : "none",
+      mapCoordText: p ? "หมุนภาพ " + st.rotation + "° · พิกัดที่เก็บไว้ไม่เปลี่ยน" : "เลือกรูปก่อน",
+      noMapDisplay: p && p.map === "district" ? "flex" : "none",
+      pinStatus: pinStatus,
+      cancelFirstDisplay: st.pendingFirst ? "flex" : "none",
+      onCancelFirst: () => { this.setState({ pendingFirst: null }); this.say("ยกเลิกคลิกแรกแล้ว", "info"); },
+      siteButtons: SITES.map((s) => ({
+        t: "ตั้งป้าย " + s,
+        onClick: () => { this.setState({ siteMode: s }); this.say("กำลังรอคลิกวางป้ายจุด " + s + " บนแผนที่ · Esc เพื่อยกเลิก", "warn"); },
+        bg: st.siteMode === s ? "rgba(226,180,100,0.16)" : "#161e22",
+        border: st.siteMode === s ? "rgba(226,180,100,0.5)" : "#2a363d",
+        fg: st.siteMode === s ? "#e2b464" : "#cfd9de"
+      })),
+      onClearSiteLabels: () => { this.setState({ siteLabels: {}, siteMode: "" }); this.say("ล้างป้ายจุดของแมพนี้แล้ว", "ok"); },
+      onClearPins: () => {
+        if (!p) { this.say("ลบหมุดไม่ได้ เพราะยังไม่ได้เลือกรูป", "err"); return; }
+        if (!p.pin) { this.say("ใบนี้ยังไม่มีหมุดให้ลบ", "warn"); return; }
+        this.setState({ items: st.items.map((x) => (x.id === p.id ? Object.assign({}, x, { pin: null }) : x)), pendingFirst: null });
+        this.say("ลบหมุดของ " + p.name + " แล้ว", "ok");
+      },
+
+      formDisplay: p ? "flex" : "none",
+      noSelectionDisplay: p ? "none" : "flex",
+      dirtyText: dirty ? "มีการแก้ที่ยังไม่บันทึก" : "ตรงกับไฟล์บนดิสก์",
+      dirtyFg: dirty ? "#e2b464" : "#66757e",
+      nameRef: (el) => { this.nameEl = el; },
+      draftName: d ? d.name : "",
+      onName: (e) => this.setDraft({ name: e.target.value }),
+      formSelects: d ? [
+        { label: "แมพ", span: "span 1", value: d.map, options: MAPS.map((m) => ({ v: m, t: m })), onChange: (e) => this.setDraft({ map: e.target.value }) },
+        { label: "ฝั่ง", span: "span 1", value: d.side, options: SIDES.map((s) => ({ v: s[0], t: s[1] })), onChange: (e) => this.setDraft({ side: e.target.value }) },
+        { label: "จุด", span: "span 1", value: d.site, options: SITES.map((s) => ({ v: s, t: s })), onChange: (e) => this.setDraft({ site: e.target.value }) },
+        { label: "ตัวละคร", span: "span 1", value: d.agent, options: agentOpts, onChange: (e) => this.setDraft({ agent: e.target.value }) },
+        { label: "สกิล", span: "span 2", value: d.skill, options: skillOpts, onChange: (e) => this.setDraft({ skill: e.target.value }) }
+      ] : [],
+      draftStar: d && d.star
+        ? { bg: "rgba(226,180,100,0.1)", border: "rgba(226,180,100,0.4)", fg: "#e2b464", boxBg: "#e2b464", boxBorder: "#e2b464", mark: "✓" }
+        : { bg: "#0d1215", border: "#2a363d", fg: "#cfd9de", boxBg: "transparent", boxBorder: "#3a4a53", mark: "" },
+      onToggleDraftStar: () => this.setDraft({ star: !d.star }),
+      draftTags: d ? d.tags.map((t, i) => ({ t: t, onRemove: () => { const tags = d.tags.slice(); tags.splice(i, 1); this.setDraft({ tags: tags }); } })) : [],
+      tagInput: st.tagInput,
+      onTagInput: (e) => this.setState({ tagInput: e.target.value }),
+      onTagKey: (e) => {
+        if (e.key !== "Enter") return;
+        const v = st.tagInput.trim();
+        if (!v) return;
+        if (d.tags.indexOf(v) >= 0) { this.say("แท็ก " + v + " มีอยู่แล้ว", "warn"); this.setState({ tagInput: "" }); return; }
+        this.setState({ draft: Object.assign({}, d, { tags: d.tags.concat([v]) }), tagInput: "" });
+      },
+      draftNote: d ? d.note : "",
+      onNote: (e) => this.setDraft({ note: e.target.value }),
+      attachments: p ? [
+        { label: "คลิป .gif", value: p.gif ? "มี" : "ไม่มี", dot: p.gif ? "#4ecf9a" : "#3b4b54", fg: p.gif ? "#9fe0c4" : "#66757e" },
+        { label: "โน้ต .txt", value: p.note ? "มี" : "ไม่มี", dot: p.note ? "#4ecf9a" : "#3b4b54", fg: p.note ? "#9fe0c4" : "#66757e" },
+        { label: "หมุดบนแผนที่", value: p.pin ? "มี" : "ยังไม่มี", dot: p.pin ? "#4ecf9a" : "#e2b464", fg: p.pin ? "#9fe0c4" : "#e2b464" },
+        { label: "สถิติการใช้งาน", value: p.uses + " ครั้ง", dot: "#3b4b54", fg: "#a9b7bf" },
+        { label: "แท็ก", value: p.tags.length ? p.tags.join(", ") : "ไม่มี", dot: p.tags.length ? "#4ecf9a" : "#3b4b54", fg: p.tags.length ? "#9fe0c4" : "#66757e" }
+      ] : [],
+      draftPath: d ? this.path(d) : "",
+      moveHintDisplay: p && d && (p.map !== d.map || p.side !== d.side || p.site !== d.site || p.agent !== d.agent || p.name !== d.name) ? "block" : "none",
+      moveHintText: "บันทึกแล้วไฟล์จริงจะถูกย้ายและเปลี่ยนชื่อ · โฟลเดอร์ปลายทางถูกสร้างให้เอง · คลิป โน้ต หมุด สถิติ และแท็กตามไปด้วย",
+      saveBtn: dirty ? { label: "บันทึกการแก้ทั้งหมด", bg: "#4ecf9a", fg: "#06241a" } : { label: "บันทึกการแก้ทั้งหมด", bg: "#233029", fg: "#7d8c95" },
+      onSave: () => this.save(),
+      onRevert: () => { if (p) { this.setState({ draft: Object.assign({}, p), tagInput: "" }); this.say("คืนค่าตามไฟล์บนดิสก์", "info"); } },
+      onAskDelete: () => this.askDelete(),
+
+      toast: { text: st.toast.text, fg: toastTone.fg, dot: toastTone.dot },
+
+      addDisplay: st.addOpen ? "flex" : "none",
+      onCloseAdd: () => this.setState({ addOpen: false }),
+      onFakeDrop: () => { this.setState({ addCount: st.addCount === 1 ? 3 : 1 }); },
+      pendingDisplay: "flex",
+      pendingCount: st.addCount,
+      pendingFiles: Array.from({ length: st.addCount }).map((_, i) => ({ t: st.addCount === 1 ? "clipboard.png · 1920×1080" : "screenshot_" + (i + 1) + ".png · 1920×1080" })),
+      addSelects: [
+        { label: "แมพ", value: st.addDest.map, options: MAPS.map((m) => ({ v: m, t: m })), onChange: (e) => this.setState({ addDest: Object.assign({}, st.addDest, { map: e.target.value }) }) },
+        { label: "ฝั่ง", value: st.addDest.side, options: SIDES.map((s) => ({ v: s[0], t: s[1] })), onChange: (e) => this.setState({ addDest: Object.assign({}, st.addDest, { side: e.target.value }) }) },
+        { label: "จุด", value: st.addDest.site, options: SITES.map((s) => ({ v: s, t: s })), onChange: (e) => this.setState({ addDest: Object.assign({}, st.addDest, { site: e.target.value }) }) },
+        { label: "ตัวละคร", value: st.addDest.agent, options: agentOpts, onChange: (e) => this.setState({ addDest: Object.assign({}, st.addDest, { agent: e.target.value }) }) }
+      ],
+      addNameDisplay: st.addCount === 1 ? "flex" : "none",
+      addMultiHintDisplay: st.addCount === 1 ? "none" : "block",
+      addName: st.addName,
+      onAddName: (e) => this.setState({ addName: e.target.value }),
+      addPath: "lineups/" + st.addDest.map + "/" + st.addDest.side + "/" + st.addDest.agent + "/" + st.addDest.site + "/" + (st.addCount === 1 ? (st.addName.trim() || "ไลน์อัพใหม่") + ".png" : "<ชื่อไฟล์เดิม>.png"),
+      onConfirmAdd: () => this.confirmAdd(),
+
+      confirmDisplay: st.confirm ? "flex" : "none",
+      confirm: st.confirm ? {
+        title: st.confirm.title, body: st.confirm.body, lines: st.confirm.lines,
+        listDisplay: st.confirm.lines && st.confirm.lines.length ? "flex" : "none",
+        btnLabel: st.confirm.btnLabel,
+        border: st.confirm.tone === "danger" ? "rgba(224,140,140,0.4)" : "#2f3c44",
+        titleFg: st.confirm.tone === "danger" ? "#e08c8c" : "#e4ebee",
+        btnBg: st.confirm.tone === "danger" ? "#e08c8c" : "#4ecf9a",
+        btnFg: st.confirm.tone === "danger" ? "#2a0d0d" : "#06241a"
+      } : { title: "", body: "", lines: [], listDisplay: "none", btnLabel: "", border: "#2f3c44", titleFg: "#e4ebee", btnBg: "#4ecf9a", btnFg: "#06241a" },
+      onConfirm: () => this.runConfirm(),
+      onCancelConfirm: () => { this.setState({ confirm: null }); this.say("ยกเลิกแล้ว ไม่มีอะไรเปลี่ยน", "info"); }
+    };
+  }
+}
+</script>
+</body>
+</html>

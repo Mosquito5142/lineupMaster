@@ -1,0 +1,470 @@
+{
+ "abyss/attack/sova/A/A main.png": {
+  "ability": "recon"
+ },
+ "abyss/attack/sova/A/ในA.png": {
+  "ability": "recon"
+ },
+ "abyss/attack/sova/B/จุดวางB.png": {
+  "ability": "recon"
+ },
+ "abyss/attack/sova/B/เช็คBใน.png": {
+  "ability": "recon"
+ },
+ "abyss/defense/sova/A/ช่วยในB.png": {
+  "ability": "recon"
+ },
+ "abyss/defense/sova/A/ทางเข้าA.png": {
+  "ability": "recon"
+ },
+ "abyss/defense/sova/A/ทางเดินมาAรีเทคA.png": {
+  "ability": "recon"
+ },
+ "abyss/defense/sova/A/รูทางเข้าA.png": {
+  "ability": "recon"
+ },
+ "abyss/defense/sova/B/B elbow to B bridge_backsite (retake).png": {
+  "ability": "recon"
+ },
+ "abyss/defense/sova/B/B lobby deep.png": {
+  "ability": "recon"
+ },
+ "abyss/defense/sova/B/B lobby_main.png": {
+  "ability": "recon"
+ },
+ "abyss/defense/sova/B/ทางเดินB.png": {
+  "ability": "recon"
+ },
+ "ascent/attack/sova/A/A Lobby to A Front (anti-cypher) #1.png": {
+  "ability": "shock"
+ },
+ "ascent/attack/sova/A/A Lobby to A Front (anti-cypher) #2.png": {
+  "ability": "shock"
+ },
+ "ascent/attack/sova/A/A Lobby to Mid Bottom (slow).png": {
+  "ability": "recon"
+ },
+ "ascent/attack/sova/A/A Main God Arrow.png": {
+  "ability": "recon"
+ },
+ "ascent/attack/sova/A/A Site Close God Arrow (Best recon for rushing A site).png": {
+  "ability": "recon"
+ },
+ "ascent/attack/sova/A/A Site God Arrow 1 (Scans heaven through the wall).png": {
+  "ability": "recon"
+ },
+ "ascent/attack/sova/A/A Site God Arrow 2.png": {
+  "ability": "recon"
+ },
+ "ascent/attack/sova/B/B Close Corners.png": {
+  "ability": "recon"
+ },
+ "ascent/attack/sova/B/B Front Site Close.png": {
+  "ability": "recon"
+ },
+ "ascent/attack/sova/B/B Front Site Deep.png": {
+  "ability": "recon"
+ },
+ "ascent/attack/sova/B/B Lobby to B Front (anti-cypher).png": {
+  "ability": "shock"
+ },
+ "ascent/attack/sova/B/B Spawn & Stairs.png": {
+  "ability": "recon"
+ },
+ "ascent/attack/sova/B/Market.png": {
+  "ability": "recon"
+ },
+ "ascent/attack/sova/B/Mid God Arrow.png": {
+  "ability": "recon"
+ },
+ "ascent/attack/sova/C/_Mid God Arrow 1 From Mid Link (Best mid recon ever!).png": {
+  "ability": "recon"
+ },
+ "ascent/defense/sova/A/A Lobby + Top Mid.png": {
+  "ability": "recon"
+ },
+ "ascent/defense/sova/A/A Main_Lobby God Arrow (Perfect with Sova ult, flies hidden).png": {
+  "ability": "recon"
+ },
+ "ascent/defense/sova/A/Ascent_กัน_A.png": {
+  "ability": "recon"
+ },
+ "ascent/defense/sova/A/Ascent_กัน_Aบน.png": {
+  "ability": "recon"
+ },
+ "ascent/defense/sova/A/ช่วยBmain.png": {
+  "ability": "recon"
+ },
+ "ascent/defense/sova/A/ช่วยBบนกล่อง.png": {
+  "ability": "recon"
+ },
+ "ascent/defense/sova/A/ช่วยBใน.png": {
+  "ability": "recon"
+ },
+ "ascent/defense/sova/A/ช่วยTOPMIN.png": {
+  "ability": "recon"
+ },
+ "ascent/defense/sova/A/ช่วยในจากบนB.png": {
+  "ability": "recon"
+ },
+ "ascent/defense/sova/B/3.png": {
+  "ability": "recon"
+ },
+ "ascent/defense/sova/B/A Lobby from B.png": {
+  "ability": "recon"
+ },
+ "ascent/defense/sova/B/B Fast Info (Lands in a perfect spot, enemies can't hide behind walls).png": {
+  "ability": "recon"
+ },
+ "ascent/defense/sova/B/B Lobby God Arrow.png": {
+  "ability": "recon"
+ },
+ "ascent/defense/sova/B/ชิ่งช่วยA.png": {
+  "ability": "recon"
+ },
+ "ascent/defense/sova/B/ช่วยA2.png": {
+  "ability": "recon"
+ },
+ "ascent/defense/sova/B/ช่วยmid.png": {
+  "ability": "recon"
+ },
+ "ascent/defense/sova/B/ช่วยmid2.png": {
+  "ability": "recon"
+ },
+ "bind/defense/sova/B/Bไว.png": {
+  "ability": "recon"
+ },
+ "bind/defense/sova/B/ช่วยAใน.png": {
+  "ability": "recon"
+ },
+ "bind/defense/sova/B/ช่วยหน้าA.png": {
+  "ability": "recon"
+ },
+ "bind/defense/sova/B/ทะลุควันทางเชื่อม.png": {
+  "ability": "recon"
+ },
+ "bind/defense/sova/B/เช็คBซ้าย.png": {
+  "ability": "recon"
+ },
+ "bind/defense/sova/B/เช็คหน้าวาปB.png": {
+  "ability": "recon"
+ },
+ "haven/attack/sova/A/A garden to C site.png": {
+  "ability": "recon"
+ },
+ "haven/attack/sova/A/กระสอบเช็คในA.png": {
+  "ability": "recon"
+ },
+ "haven/attack/sova/A/ทางเดินA 2.png": {
+  "ability": "recon"
+ },
+ "haven/attack/sova/A/ทางเดินA.png": {
+  "ability": "recon"
+ },
+ "haven/attack/sova/A/เช็คAหน้า.png": {
+  "ability": "recon"
+ },
+ "haven/attack/sova/A/ในรูA.png": {
+  "ability": "recon"
+ },
+ "haven/attack/sova/C/จากmainไปCใน.png": {
+  "ability": "recon"
+ },
+ "haven/attack/sova/C/เคลียtrapไซเฟอร์.png": {
+  "ability": "recon"
+ },
+ "haven/attack/sova/C/เช็คในหลังC.png": {
+  "ability": "recon"
+ },
+ "haven/defense/sova/A/Aช่วยในC.png": {
+  "ability": "recon"
+ },
+ "haven/defense/sova/A/ทางเข้าA.png": {
+  "ability": "recon"
+ },
+ "haven/defense/sova/A/บนบ้านช่วยหน้าB.png": {
+  "ability": "recon"
+ },
+ "haven/defense/sova/A/บนบ้านช่วยหน้าC.png": {
+  "ability": "recon"
+ },
+ "haven/defense/sova/A/บนบ้านเช็หน้าทางเข้าA.png": {
+  "ability": "recon"
+ },
+ "haven/defense/sova/A/เช็คA long.png": {
+  "ability": "recon"
+ },
+ "haven/defense/sova/B/Bเช็คหน้าทางเข้าA.png": {
+  "ability": "recon"
+ },
+ "haven/defense/sova/B/Bไปหลังคาบ้านหน้าA.png": {
+  "ability": "recon"
+ },
+ "haven/defense/sova/B/ทางเชื่อมBC.png": {
+  "ability": "recon"
+ },
+ "haven/defense/sova/C/Cไว.png": {
+  "ability": "recon"
+ },
+ "haven/defense/sova/C/หน้าCลึก.png": {
+  "ability": "recon"
+ },
+ "haven/defense/sova/C/เช็คหน้าC.png": {
+  "ability": "recon"
+ },
+ "lotus/attack/sova/A/A Lobby + Top Mid.png": {
+  "ability": "recon"
+ },
+ "lotus/attack/sova/A/A Main.png": {
+  "ability": "recon"
+ },
+ "lotus/attack/sova/A/A SITE _ MAIN.png": {
+  "ability": "recon"
+ },
+ "lotus/attack/sova/A/A door.png": {
+  "ability": "recon"
+ },
+ "lotus/attack/sova/A/ข้างรูต้นไม้-หลังA.png": {
+  "ability": "recon"
+ },
+ "lotus/attack/sova/A/ประตูA-รูต้นไม้.png": {
+  "ability": "recon"
+ },
+ "lotus/attack/sova/A/มุมหน้าประตูต้นไม้-หลังA.png": {
+  "ability": "recon"
+ },
+ "lotus/attack/sova/A/หลอกไป C.png": {
+  "ability": "recon"
+ },
+ "lotus/attack/sova/A/เช็คต้นไม้.png": {
+  "ability": "recon"
+ },
+ "lotus/attack/sova/B/Atk spawn to B site.png": {
+  "ability": "recon"
+ },
+ "lotus/attack/sova/B/GOD B SITE.png": {
+  "ability": "recon"
+ },
+ "lotus/attack/sova/B/จุดเกิด-รูB.png": {
+  "ability": "recon"
+ },
+ "lotus/attack/sova/B/จุดเกิดA-รูB.png": {
+  "ability": "recon"
+ },
+ "lotus/attack/sova/B/หน้าB-รูB.png": {
+  "ability": "recon"
+ },
+ "lotus/attack/sova/B/เช็คBใน.png": {
+  "ability": "recon"
+ },
+ "lotus/attack/sova/C/C mound-ในC.png": {
+  "ability": "recon"
+ },
+ "lotus/attack/sova/C/C moundนั้ง-ในC.png": {
+  "ability": "recon"
+ },
+ "lotus/attack/sova/C/on C.png": {
+  "ability": "recon"
+ },
+ "lotus/attack/sova/C/กล่องไปหน้าC.png": {
+  "ability": "recon"
+ },
+ "lotus/attack/sova/C/หลังจุดเกิด-CT.png": {
+  "ability": "recon"
+ },
+ "lotus/attack/sova/C/หลังจุดเกิด-ในC.png": {
+  "ability": "recon"
+ },
+ "lotus/defense/sova/A/ช่วยกลางB.png": {
+  "ability": "recon"
+ },
+ "lotus/defense/sova/A/ช่วยหน้าC.png": {
+  "ability": "recon"
+ },
+ "lotus/defense/sova/A/ทางเข้าA.png": {
+  "ability": "recon"
+ },
+ "lotus/defense/sova/A/หลังทางเดินA.png": {
+  "ability": "recon"
+ },
+ "lotus/defense/sova/A/เช็คจุดเกิด.png": {
+  "ability": "recon"
+ },
+ "lotus/defense/sova/A/ไปในหน้าA.png": {
+  "ability": "recon"
+ },
+ "lotus/defense/sova/B/เช็คจุดเกิด.png": {
+  "ability": "recon"
+ },
+ "lotus/defense/sova/B/เช็คหน้าA.png": {
+  "ability": "recon"
+ },
+ "lotus/defense/sova/B/เช็คหน้าC.png": {
+  "ability": "recon"
+ },
+ "lotus/defense/sova/B/เช็คในC.png": {
+  "ability": "recon"
+ },
+ "lotus/defense/sova/C/กล่องไปหน้าC (1).png": {
+  "ability": "recon"
+ },
+ "lotus/defense/sova/C/ประตูC-ทางเดินมาC.png": {
+  "ability": "recon"
+ },
+ "lotus/defense/sova/C/ประตูC-รูต้นไม้A.png": {
+  "ability": "recon"
+ },
+ "lotus/defense/sova/C/หลังC-ในB.png": {
+  "ability": "recon"
+ },
+ "split/attack/sova/A/ทางเข้าtower.png": {
+  "ability": "recon"
+ },
+ "split/attack/sova/A/บนtower.png": {
+  "ability": "recon"
+ },
+ "split/attack/sova/A/เช็คคนกันAใกล้.png": {
+  "ability": "recon"
+ },
+ "split/attack/sova/A/ในB.png": {
+  "ability": "recon"
+ },
+ "split/attack/sova/B/mid.png": {
+  "ability": "recon"
+ },
+ "split/attack/sova/B/เช็คmidเชื่อมB.png": {
+  "ability": "recon"
+ },
+ "split/attack/sova/B/ในB.png": {
+  "ability": "recon"
+ },
+ "split/attack/sova/B/ในBหลัง.png": {
+  "ability": "recon"
+ },
+ "split/defense/sova/A/บนtower-Aทั้งหมด.png": {
+  "ability": "recon"
+ },
+ "split/defense/sova/A/บนtower-ทางมาAลึก.png": {
+  "ability": "recon"
+ },
+ "split/defense/sova/A/บนtower-หลังทางมาA.png": {
+  "ability": "recon"
+ },
+ "split/defense/sova/A/หลังA-ทางเดินเข้าA.png": {
+  "ability": "recon"
+ },
+ "split/defense/sova/A/เช็คหน้าA.png": {
+  "ability": "recon"
+ },
+ "split/defense/sova/A/ในA-หน้าทางเเข้าB.png": {
+  "ability": "recon"
+ },
+ "split/defense/sova/A/ในหลังไซต์-ทางมาA.png": {
+  "ability": "recon"
+ },
+ "split/defense/sova/B/ขอบTower-ทางเดินB.png": {
+  "ability": "recon"
+ },
+ "split/defense/sova/B/ทางเข้าBไว.png": {
+  "ability": "recon"
+ },
+ "split/defense/sova/B/เช็คพวกหลบสแกน.png": {
+  "ability": "recon"
+ },
+ "split/defense/sova/C/บนTower-mid.png": {
+  "ability": "recon"
+ },
+ "split/defense/sova/C/บนtowerทางออกA-mid.png": {
+  "ability": "recon"
+ },
+ "split/defense/sova/C/บนtowerทางออกA-บ้านB.png": {
+  "ability": "recon"
+ },
+ "summit/attack/sova/A/A Main to A Garden_Pillar.png": {
+  "ability": "recon"
+ },
+ "summit/attack/sova/A/A Main to A Site_Pebble.png": {
+  "ability": "recon"
+ },
+ "summit/attack/sova/A/เช็คAใน.png": {
+  "ability": "recon"
+ },
+ "summit/attack/sova/A/เช็คในAส่วนหน้า.png": {
+  "ability": "recon"
+ },
+ "summit/attack/sova/B/A Main to A Site_Pebble.png": {
+  "ability": "recon"
+ },
+ "summit/attack/sova/B/เช็คข้างบน.png": {
+  "ability": "recon"
+ },
+ "summit/defense/sova/A/midเช็คA lobby.png": {
+  "ability": "recon"
+ },
+ "summit/defense/sova/A/midเช็คในA.png": {
+  "ability": "recon"
+ },
+ "summit/defense/sova/A/กันAไว.png": {
+  "ability": "recon"
+ },
+ "summit/defense/sova/A/ในเช็คAmain.png": {
+  "ability": "recon"
+ },
+ "summit/defense/sova/B/midเช็คในB.png": {
+  "ability": "recon"
+ },
+ "summit/defense/sova/B/ข้างบนเช็คB lobby.png": {
+  "ability": "recon"
+ },
+ "summit/defense/sova/B/ช่วย A main.png": {
+  "ability": "recon"
+ },
+ "summit/defense/sova/B/ทางเข้าหน้าB.png": {
+  "ability": "recon"
+ },
+ "summit/defense/sova/B/เช็คB lobby.png": {
+  "ability": "recon"
+ },
+ "sunset/attack/sova/A/ทางเดินA ออกmain.png": {
+  "ability": "recon"
+ },
+ "sunset/attack/sova/A/เช็คAในทางเดิน.png": {
+  "ability": "recon"
+ },
+ "sunset/attack/sova/A/เช็คหน้าAเข้าใน.png": {
+  "ability": "recon"
+ },
+ "sunset/attack/sova/A/ในA.png": {
+  "ability": "recon"
+ },
+ "sunset/attack/sova/B/หน้าในB.png": {
+  "ability": "recon"
+ },
+ "sunset/attack/sova/B/หลอกสแกนไปA.png": {
+  "ability": "recon"
+ },
+ "sunset/attack/sova/B/เช็คทางเข้าB.png": {
+  "ability": "recon"
+ },
+ "sunset/attack/sova/B/เช็คในBส่วนหน้า.png": {
+  "ability": "recon"
+ },
+ "sunset/defense/sova/A/Aช่วยB.png": {
+  "ability": "recon"
+ },
+ "sunset/defense/sova/A/หลังAไปA main.png": {
+  "ability": "recon"
+ },
+ "sunset/defense/sova/A/เช็คA main.png": {
+  "ability": "recon"
+ },
+ "sunset/defense/sova/A/เช็คAไว.png": {
+  "ability": "recon"
+ },
+ "sunset/defense/sova/B/เช็คคนจะบุกB.png": {
+  "ability": "recon"
+ },
+ "sunset/defense/sova/B/เช็คหน้าBไว.png": {
+  "ability": "recon"
+ }
+}

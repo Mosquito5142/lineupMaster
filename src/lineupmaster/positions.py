@@ -87,6 +87,13 @@ def _distance(a: Point, b: Point) -> float:
     return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
 
 
+def distance(a: Point, b: Point) -> float:
+    """ระยะห่างระหว่างสองจุด (สัดส่วนของรูปแผนที่) — เปิดเป็น public ให้โมดูลอื่นใช้ได้ตรงๆ
+    (เช่น browser.py หาหมุดที่ใกล้ชื่อโซนที่สุด) แทนที่จะแตะ _distance ตรงๆ
+    """
+    return _distance(a, b)
+
+
 def same_spot(a: Point | None, b: Point | None) -> bool:
     """สองพิกัดนี้นับเป็นจุดยืนเดียวกันไหม — ใช้เกณฑ์เดียวกับตอนรวมหมุด."""
     if a is None or b is None:

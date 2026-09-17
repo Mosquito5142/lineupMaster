@@ -37,9 +37,30 @@ from .paths import ASSETS, icon_path
 GAP = 6                 # ช่องไฟระหว่างรูป (px)
 _CACHE_LIMIT = 64
 
-PIN_COLOR = "#cfd8e3"        # หมุดปกติ
+PIN_COLOR = "#cfd8e3"        # หมุดที่ไม่มีสีประจำตัว (หมุดลำดับที่ 9 ขึ้นไปในหน้าเดียวกัน)
 PIN_ON = "#ffd479"           # หมุดที่เลือก + เส้นไปเป้า (สีเดียวกับข้อความเตือนของแอป)
 SITE_LABEL_COLOR = "#7dd3fc" # ตัวอักษร A/B/C บนแผนที่ (ฟ้า — ไม่ซ้ำกับสีหมุดหรือเส้น)
+CALLOUT_COLOR = "#7a8496"    # เทาจาง = ชื่อโซนอ้างอิงจากเกม (ดูเฉยๆ ไม่ใช่หมุดไลน์อัพ)
+
+# หมุด 1-8 มีสีประจำตัว (ตัวเลข + เส้นไปเป้า สีเดียวกัน) จะได้ไล่ตามเส้นเจอโดยไม่ต้องกดเลือกก่อน
+# เป็นชุดสีจัดหมวด (categorical) ที่ผ่านการตรวจแล้วว่าแยกออกจากกันชัด แม้สำหรับคนตาบอดสี —
+# เรียงตามลำดับตายตัว **ห้ามสลับ/วนซ้ำ** เกิน 8 สี (หมุดที่ 9 ขึ้นไปใช้ PIN_COLOR เฉยๆ แทน
+# เพราะเป็นกรณีเกิดยากอยู่แล้ว — หน้าละ 9 หมุดคือเพดานสูงสุดของ numpad)
+PIN_PALETTE = [
+    "#3987e5",  # น้ำเงิน
+    "#d95926",  # ส้ม
+    "#199e70",  # เขียวอมฟ้า
+    "#c98500",  # เหลือง
+    "#d55181",  # ชมพูอมม่วง
+    "#008300",  # เขียว
+    "#9085e9",  # ม่วง
+    "#e66767",  # แดง
+]
+
+
+def _pin_hue(index: int) -> str:
+    """สีประจำตัวของหมุดลำดับที่ index (0-based) — ดูที่มาที่ PIN_PALETTE ด้านบน."""
+    return PIN_PALETTE[index] if index < len(PIN_PALETTE) else PIN_COLOR
 
 
 def gif_duration_ms(path: Path) -> int:
@@ -60,7 +81,14 @@ def gif_duration_ms(path: Path) -> int:
 
 
 def _label_for(lu: Lineup) -> str:
-    """ชื่อที่โชว์ทับมุมล่างของรูป — ใช้ชื่อไฟล์จริงตามที่ตั้งไว้ (อ่านง่ายกว่า tag ที่แยกได้)."""
+    """ชื่อที่โชว์ทับมุมล่างของรูป.
+
+    มีโน้ต (.txt คู่ชื่อไฟล์ — ดู index.py::_read_note) ใช้โน้ตเลย เพราะพอสูตรจากจุดยืน
+    เดียวกันเยอะขึ้น รูปจะหน้าตาคล้ายกันมาก อ่านโน้ตสั้นๆ ไวกว่าแกะชื่อไฟล์ยาวๆ — ไม่มีโน้ต
+    ก็กลับไปใช้ชื่อไฟล์แบบเดิม (อ่านง่ายกว่า tag ที่แยกได้)
+    """
+    if lu.note:
+        return lu.note.strip()
     return lu.stem.replace("_", " ").replace("-", " ")
 
 
@@ -405,10 +433,12 @@ class MapView(QWidget):
         self._pins: list = []          # positions.Pin ของหน้าปัจจุบัน
         self._selected: int | None = None   # ลำดับในหน้า (0-based)
         self._labels: dict[str, tuple[tuple[float, float], bool]] = {}  # {"a": ((x,y), ตั้งเองไหม)}
+        self._callouts: list[tuple[str, tuple[float, float]]] = []  # [(ชื่อโซน, จุด)] อ้างอิงเฉยๆ
 
     def show_map(
         self, name: str | None, pins: list, selected: int | None,
         labels: dict[str, tuple[tuple[float, float], bool]] | None = None,
+        callouts: list[tuple[str, tuple[float, float]]] | None = None,
     ) -> None:
         if name != self._name:
             self._name = name
@@ -426,6 +456,7 @@ class MapView(QWidget):
         self._pins = pins
         self._selected = selected
         self._labels = labels or {}
+        self._callouts = callouts or []
         self.update()
 
     def _map_rect(self) -> QRect | None:
@@ -446,6 +477,28 @@ class MapView(QWidget):
     def _at(self, rect: QRect, point) -> QPoint:
         return QPoint(round(rect.x() + point[0] * rect.width()),
                       round(rect.y() + point[1] * rect.height()))
+
+    def _draw_callouts(self, painter: QPainter, rect: QRect) -> None:
+        """ป้ายอ้างอิงชื่อโซนที่เกมโชว์เอง (วางตำแหน่งไว้ผ่าน tools/place_callouts.py).
+
+        เห็นชื่อนี้บนจอเกม (มุมซ้ายบนของมินิแมพ) แล้วมาหาชื่อเดียวกันตรงนี้ ก็รู้ทันทีว่า
+        หมุดเลขไหนอยู่ใกล้ตัว — จุดเทาจาง ไม่แย่งสายตากับหมุด/เส้นซึ่งสำคัญกว่า วาดก่อนสุดเสมอ
+        """
+        if not self._callouts:
+            return
+        font = painter.font()
+        font.setPointSize(max(8, round(min(rect.width(), rect.height()) * 0.016)))
+        font.setBold(False)
+        painter.setFont(font)
+        dot = QColor(CALLOUT_COLOR); dot.setAlpha(150)
+        text = QColor(CALLOUT_COLOR); text.setAlpha(200)
+        for label, xy in self._callouts:
+            at = self._at(rect, xy)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(dot)
+            painter.drawEllipse(at, 3, 3)
+            painter.setPen(text)
+            painter.drawText(at.x() + 7, at.y() + 4, label)
 
     def _draw_site_labels(self, painter: QPainter, rect: QRect) -> None:
         """วาดตัวอักษร A/B/C กำกับจุดยิง — รูปแผนที่ดิบไม่มีตัวอักษรนี้มาให้เอง.
@@ -505,6 +558,7 @@ class MapView(QWidget):
             ),
         )
 
+        self._draw_callouts(painter, rect)
         self._draw_site_labels(painter, rect)
 
         if not self._pins:
@@ -519,6 +573,20 @@ class MapView(QWidget):
             return
 
         radius = max(15, round(min(rect.width(), rect.height()) * 0.023))
+
+        # เส้นจางของ "ทุก" หมุด — ให้เห็นได้ว่าแต่ละจุดยิงไปทางไหนโดยไม่ต้องกดเลือกก่อน แต่ละเส้น
+        # ใช้สีเดียวกับตัวเลขของหมุดต้นทาง (ดู PIN_PALETTE) จะได้ไล่ตามเส้นไปหาหมุดที่ใช่ได้ทันที
+        # โดยไม่ต้องเดา — วาดก่อนสุด (จางที่สุด) แล้วให้หมุดที่เลือกอยู่ทับด้วยเส้นสว่างอีกที
+        for i, pin in enumerate(self._pins):
+            faint_pen = QPen(QColor(_pin_hue(i)))
+            faint_pen.setWidthF(1.4)
+            faint_color = faint_pen.color()
+            faint_color.setAlpha(130)
+            faint_pen.setColor(faint_color)
+            painter.setPen(faint_pen)
+            start = self._at(rect, pin.xy)
+            for target in pin.targets:
+                painter.drawLine(start, self._at(rect, target))
 
         # เส้นไปเป้าวาดก่อน จะได้อยู่ใต้หมุด ไม่บังตัวเลข
         if self._selected is not None and self._selected < len(self._pins):
@@ -535,16 +603,17 @@ class MapView(QWidget):
 
         for i, pin in enumerate(self._pins):
             on = i == self._selected
+            hue = QColor(_pin_hue(i))
             at = self._at(rect, pin.xy)
             body = QColor(PIN_ON) if on else QColor("#11161f")
             painter.setBrush(body)
-            painter.setPen(QPen(QColor(PIN_ON if on else PIN_COLOR), 3 if on else 2))
+            painter.setPen(QPen(QColor(PIN_ON) if on else hue, 3 if on else 2))
             painter.drawEllipse(at, radius, radius)
 
             font.setPointSize(max(10, round(radius * 0.95)))
             font.setBold(True)
             painter.setFont(font)
-            painter.setPen(QColor("#11161f") if on else QColor(PIN_COLOR))
+            painter.setPen(QColor("#11161f") if on else hue)
             painter.drawText(
                 QRect(at.x() - radius, at.y() - radius, radius * 2, radius * 2),
                 Qt.AlignmentFlag.AlignCenter,
@@ -555,7 +624,7 @@ class MapView(QWidget):
             if len(pin.lineups) > 1:
                 font.setPointSize(max(8, round(radius * 0.62)))
                 painter.setFont(font)
-                painter.setPen(QColor(PIN_ON if on else PIN_COLOR))
+                painter.setPen(QColor(PIN_ON) if on else hue)
                 painter.drawText(
                     QRect(at.x(), at.y() + radius - 2, radius * 3, radius),
                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
@@ -652,10 +721,11 @@ class MainWindow(QMainWindow):
     def show_map_view(
         self, name: str | None, pins: list, selected: int | None,
         labels: dict[str, tuple[float, float]] | None = None,
+        callouts: list[tuple[str, tuple[float, float]]] | None = None,
     ) -> None:
         """สลับไปชั้น 0 — หยุด gif ที่อาจค้างอยู่ก่อน ไม่งั้นมันเล่นอยู่หลังแผนที่เงียบๆ."""
         self.wall.set_gif(None)
-        self.map.show_map(name, pins, selected, labels)
+        self.map.show_map(name, pins, selected, labels, callouts)
         self.stack.setCurrentWidget(self.map)
 
     def show_view(

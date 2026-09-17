@@ -21,7 +21,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
@@ -42,6 +42,10 @@ class Lineup:
     site: str | None = None         # "a" | "b" | "c" — จุดยิง มาจากชื่อโฟลเดอร์
     note: str = ""
     gif: Path | None = None         # คลิปวิถีลูกชื่อเดียวกัน (ถ้ามี) ดูได้ตอนซูม
+    # แท็กที่ไม่ได้มาจาก path — เติมทีหลังจาก meta.json (ดู meta.apply)
+    fav: bool = False               # "ไม้ตาย" ที่ใช้จริงประจำ
+    tags: list[str] = field(default_factory=list)   # anti-cypher, post-plant, ...
+    drilled: int = 0                # ซ้อมในห้องคัสตอมไปกี่ครั้งแล้ว
 
     @property
     def title(self) -> str:

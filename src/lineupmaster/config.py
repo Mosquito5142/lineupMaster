@@ -40,6 +40,15 @@ DEFAULTS: dict[str, Any] = {
         "pin_7": "numpad7",
         "pin_8": "numpad8",
         "pin_9": "numpad9",
+        # วางรูปชื่อโซนจากคลิปบอร์ดให้อ่าน (OCR) — อยู่นอก numpad เพราะ numpad เต็มแล้ว
+        # (บนหน้าแผนที่ เลข 1-9 ถูกใช้เลือกหมุดหมด ไม่เหลือปุ่มว่างที่ใช้ได้ทั้งสองโหมด)
+        "locate": "insert",
+        # บล็อก 6 ปุ่มเหนือลูกศร = ตัวกรอง (numpad เต็มแล้ว) — อยู่ติดกับ numpad มือเดียวกดถึง
+        "filter_agent": "delete",       # สลับตัวละคร
+        "filter_ability": "home",       # สลับสกิล
+        "filter_fav": "end",            # เฉพาะไม้ตาย
+        "filter_tag": "page up",        # สลับแท็กสถานการณ์ (แก้ทาง/post-plant)
+        "drill": "page down",           # โหมดซ้อม: สุ่มใบถัดไป
     },
     "display": {
         "monitor": 1,
@@ -49,6 +58,7 @@ DEFAULTS: dict[str, Any] = {
         "show_status": True,
         "show_labels": True,
         "equal_size": True,
+        "start_on_map": True,
     },
     "gif": {
         "max_seconds": 3.0,
