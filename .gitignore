@@ -4,21 +4,15 @@ __pycache__/
 query-log.txt
 last-view.json
 
-# ไฟล์ข้อมูลที่ root ตกยุค — ต้นฉบับจริงตอนนี้คือของใน dist/LineupMaster/ (ดูด้านล่าง)
-# เก็บไฟล์เหล่านี้ไว้ในดิสก์ได้ตามปกติ แค่ไม่ให้ git สับสนว่าอันไหนคือของจริง
+# ไฟล์ข้อมูลผู้ใช้ที่ root ตกยุค (positions/callouts) — เก็บไว้ในดิสก์ได้ตามปกติ แค่ไม่ให้
+# git สับสน ต้นฉบับจริงคือของใน dist/LineupMaster/ ซึ่งไม่เข้า git เลยเหมือนกัน (ดูด้านล่าง)
 /positions.json
 /callouts.json
 
-# ผลลัพธ์การบิ้ว exe (สร้างใหม่ได้ด้วย tools/build_exe.py) — ยกเว้นไฟล์ข้อมูลผู้ใช้ 4 ไฟล์
-# (positions/callouts/meta/capture) ที่ track ตรงจากในนี้เลย เพราะผู้ใช้แก้ไขที่นี่เป็นหลัก
-# (เปิดผ่าน shortcut) ไม่ต้องคอยก๊อปออกมาไว้ที่ root ก่อน commit ทุกครั้ง
-dist/*
-!dist/LineupMaster/
-dist/LineupMaster/*
-!dist/LineupMaster/positions.json
-!dist/LineupMaster/callouts.json
-!dist/LineupMaster/meta.json
-!dist/LineupMaster/capture.json
+# ผลลัพธ์การบิ้ว exe (สร้างใหม่ได้ด้วย tools/build_exe.py) — **รวมไฟล์ข้อมูลผู้ใช้ทั้งหมด**
+# (หมุด/ชื่อโซน/แท็ก/กรอบแคป/รูปไลน์อัพ) ตั้งใจให้ซิงก์ต่อเนื่องผ่าน Google Drive แทน ไม่ผ่าน
+# git เลย — ไม่ต้อง commit/pull เอง (ดู README หัวข้อ "ย้ายไปเครื่องอื่น")
+dist/
 build/
 
 # รูปไลน์อัพ — หนักและเป็นสื่อ ไม่เหมาะกับ git เก็บแยกไว้ที่ Google Drive แทน
