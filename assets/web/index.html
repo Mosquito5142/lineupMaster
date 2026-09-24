@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LineupMaster — จัดการคลัง</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="brand"><h1>LineupMaster</h1></div>
+  <span class="divider"></span>
+  <p id="subtitle" class="count">กำลังโหลด…</p>
+
+  <input id="search" class="search" type="search" placeholder="ค้นหาชื่อไลน์อัพ เช่น เช็คBใน" autocomplete="off">
+
+  <div class="top-actions">
+    <button id="btn-unpinned" class="chip" type="button">ยังไม่จิ้มหมุด 0</button>
+    <button id="btn-add" class="primary" type="button">เพิ่มรูปเข้าคลัง</button>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab on" type="button" data-tab="library">คลังของเรา</button>
+  <button class="tab" type="button" data-tab="source">หาไลน์อัพจากเว็บ</button>
+</nav>
+
+<div id="tab-library">
+<nav class="filters">
+  <label>แมพ <select id="f-map"></select></label>
+  <label>ฝั่ง <select id="f-side"></select></label>
+  <label>จุด <select id="f-site"></select></label>
+  <label>ตัวละคร <select id="f-agent"></select></label>
+  <label>สกิล <select id="f-ability"></select></label>
+  <label>แท็ก <select id="f-tag"></select></label>
+  <button id="f-fav" class="chip toggle" type="button">★ ไม้ตาย</button>
+  <button id="f-reset" class="chip" type="button">ล้างตัวกรอง</button>
+  <span class="spacer"></span>
+  <button id="btn-prev" class="icon" type="button" title="ใบก่อนหน้าในรายการที่กรองอยู่ (Alt+←)">‹</button>
+  <button id="btn-next" class="icon" type="button" title="ใบถัดไปในรายการที่กรองอยู่ (Alt+→)">›</button>
+  <button id="btn-wide" class="chip" type="button" title="ซ่อนรายการรูปทางซ้าย ให้รูปไลน์อัพกับแผนที่ใหญ่เต็มหน้าต่าง (กด Esc ออก)">⛶ จอใหญ่</button>
+  <span id="count" class="count"></span>
+</nav>
+
+<main class="body" id="lib-body">
+
+  <!-- ซ้าย: รายการรูปในคลัง -->
+  <section class="library" id="library">
+    <div id="grid" class="grid"></div>
+    <p id="empty" class="empty" hidden></p>
+  </section>
+
+  <div class="splitter" id="lib-split" title="ลากซ้าย-ขวาเพื่อปรับความกว้าง (ดับเบิลคลิก = กลับค่าเริ่มต้น)"></div>
+
+  <!-- ขวา: รายละเอียด + แก้ไข + จิ้มหมุด -->
+  <aside class="detail" id="detail">
+    <p class="placeholder" id="placeholder">เลือกรูปทางซ้ายเพื่อดูและแก้ไข</p>
+
+    <div id="editor" hidden>
+      <!-- เส้นทางเขียนเป็นตัวหนังสือที่วิ่งจากต้นทางไปปลายทาง — รูปทรงเดียวกับเส้นบนแผนที่ข้างล่าง -->
+      <p class="route-line" id="route-line">
+        <span class="a"></span><span class="track"></span><span class="b"></span>
+      </p>
+
+      <div class="panes" id="lib-panes">
+        <figure class="preview">
+          <div class="mapbar">
+            <button class="icon" type="button" data-pv="out" title="ซูมออก">−</button>
+            <span class="pv-zoom hint">100%</span>
+            <button class="icon" type="button" data-pv="in" title="ซูมเข้า">+</button>
+            <button class="icon" type="button" data-pv="fit" title="พอดีกรอบ (หรือดับเบิลคลิกบนรูป)">⛶</button>
+            <span class="hint">ลากเพื่อเลื่อน หมุนลูกกลิ้งเพื่อซูม — ส่องมินิแมพในรูปได้</span>
+          </div>
+          <div class="previewstage" id="preview-stage">
+            <img id="preview-img" alt="">
+          </div>
+          <figcaption id="preview-path"></figcaption>
+        </figure>
+
+        <div class="splitter" id="pane-split" title="ลากซ้าย-ขวาเพื่อปรับขนาดรูปกับแผนที่ (ดับเบิลคลิก = กลับครึ่งต่อครึ่ง)"></div>
+
+        <figure class="mappane">
+          <div class="mapbar" id="lib-mapbar">
+            <button class="icon" type="button" data-mv="out" title="ซูมออก">−</button>
+            <span class="mv-zoom hint">100%</span>
+            <button class="icon" type="button" data-mv="in" title="ซูมเข้า">+</button>
+            <button class="icon" type="button" data-mv="fit" title="พอดีจอ (หรือดับเบิลคลิกบนแผนที่)">⛶</button>
+            <span class="divider"></span>
+            <button class="icon" type="button" data-mv="ccw" title="หมุนซ้าย 15°">↺</button>
+            <input class="mv-rot size-slider" type="range" min="0" max="359" value="0" title="หมุนแผนที่ (หมุนแค่ภาพที่เห็น พิกัดที่เก็บไม่ขยับ)">
+            <span class="mv-deg hint">0°</span>
+            <button class="icon" type="button" data-mv="cw" title="หมุนขวา 15°">↻</button>
+            <button class="icon" type="button" data-mv="rot0" title="เลิกหมุน กลับ 0°">0°</button>
+          </div>
+          <div class="mapstage" id="lib-mapstage"></div>
+          <div class="mapbar">
+            <span id="pin-status" class="hint">คลิก 2 ครั้ง: จุดยืน → จุดที่ลูกไปตก</span>
+            <span class="spacer"></span>
+            <button class="icon" type="button" data-site="a" title="วางป้ายจุด A">Ⓐ</button>
+            <button class="icon" type="button" data-site="b" title="วางป้ายจุด B">Ⓑ</button>
+            <button class="icon" type="button" data-site="c" title="วางป้ายจุด C">Ⓒ</button>
+            <button id="pin-undo" class="icon" type="button" title="ยกเลิกคลิกแรก">↶</button>
+            <button id="pin-clear" class="icon danger" type="button" title="ลบหมุดของใบนี้">🗑</button>
+          </div>
+        </figure>
+      </div>
+
+      <div class="splitter horiz" id="form-split" title="ลากขึ้น-ลงเพื่อปรับความสูงของรูปกับแผนที่ (ดับเบิลคลิก = กลับค่าเริ่มต้น)"></div>
+
+      <form id="form" class="form" autocomplete="off">
+        <!-- ที่อยู่ของไฟล์คือการจัดหมวดของโปรแกรมนี้ (แมพ/ฝั่ง/ตัวละคร/จุด = โฟลเดอร์จริงๆ)
+             ฟอร์มเลยหน้าตาเป็นพาธที่แก้ได้ทีละส่วน แทนช่องเลือกแยก 5 ช่องแล้วเฉลยพาธซ้ำข้างล่าง -->
+        <div class="pathbar" title="ที่อยู่ของไฟล์จริงบนดิสก์ — เปลี่ยนตรงนี้คือย้ายไฟล์จริง">
+          <span class="fixed">lineups</span><span class="sep">/</span>
+          <select id="e-map" title="แมพ"></select><span class="sep">/</span>
+          <select id="e-side" title="ฝั่งบุก / ตั้งรับ"></select><span class="sep">/</span>
+          <select id="e-agent" title="ตัวละคร"></select><span class="sep">/</span>
+          <select id="e-site" title="จุด A / B / C"></select><span class="sep">/</span>
+          <input id="e-name" type="text" required title="ชื่อไฟล์" aria-label="ชื่อไลน์อัพ">
+          <span class="fixed">.png</span>
+        </div>
+
+        <div class="row">
+          <label>สกิล <select id="e-ability"></select></label>
+          <label><input id="e-fav" type="checkbox"> ★ ไม้ตาย</label>
+          <label class="grow">แท็ก
+            <input id="e-tags" type="text" placeholder="คั่นด้วยเว้นวรรค เช่น post-plant anti-cypher">
+          </label>
+        </div>
+
+        <label class="hint" for="e-note">โน้ต — มีโน้ตแล้วจอที่สองจะโชว์โน้ตแทนชื่อไฟล์</label>
+        <textarea id="e-note" rows="2"></textarea>
+
+        <div class="form-actions">
+          <button type="submit" class="primary">บันทึกการแก้ไข</button>
+          <span class="spacer"></span>
+          <button type="button" id="btn-delete" class="danger">ลบใบนี้</button>
+        </div>
+      </form>
+    </div>
+  </aside>
+</main>
+</div><!-- /tab-library -->
+
+<!-- ================= แท็บ: หาไลน์อัพจากเว็บ ================= -->
+<div id="tab-source" hidden>
+  <nav class="filters">
+    <label>ตัวละคร <select id="s-agent"></select></label>
+    <label>แมพ <select id="s-map"></select></label>
+    <label>ฝั่ง <select id="s-side"></select></label>
+    <label>จุด <select id="s-site"></select></label>
+    <label>สกิล <select id="s-ability"></select></label>
+    <label>ต้นทาง <select id="s-from"></select></label>
+    <label>ปลายทาง <select id="s-to"></select></label>
+    <label>ขั้น <select id="s-steps">
+      <option value="">— ทั้งหมด —</option>
+      <option value="1">1 รูป</option>
+      <option value="2-3">2-3 ขั้น</option>
+      <option value="4-5">4-5 ขั้น</option>
+      <option value="6-99">6 ขั้นขึ้นไป</option>
+    </select></label>
+    <label>ยาก <select id="s-diff"></select></label>
+    <label>เว็บ <select id="s-src"></select></label>
+    <label>ค้นหา <input id="s-q" type="search" placeholder="ชื่อ / คำอธิบาย"></label>
+    <label class="inline" title="ซ่อนใบที่คลังเรามีเส้นทางนี้ของตัวละครนี้อยู่แล้ว">
+      <input id="s-owned" type="checkbox"> ซ่อนที่มีแล้ว</label>
+    <button id="s-reload" class="chip" type="button">โหลดรายการใหม่</button>
+    <span class="spacer"></span>
+    <button id="s-mode" class="chip" type="button" title="สลับระหว่างดูเป็นตาราง (คัดทีละหลายใบ) กับดูทีละใบ (แต่งรูปได้)">⊞ ตาราง</button>
+    <span id="s-count" class="count"></span>
+  </nav>
+
+  <details id="s-zonebox" class="pinbox wide-box">
+    <summary>กรองด้วยการจิ้มบนแผนที่ <span id="s-zonestate" class="hint">ยังไม่ได้เลือก</span></summary>
+    <div class="mapbar">
+      <button class="icon" type="button" data-mv="out" title="ซูมออก">−</button>
+      <span class="mv-zoom hint">100%</span>
+      <button class="icon" type="button" data-mv="in" title="ซูมเข้า">+</button>
+      <button class="icon" type="button" data-mv="fit" title="พอดีจอ (หรือดับเบิลคลิกบนแผนที่)">⛶</button>
+      <span class="divider"></span>
+      <button class="icon" type="button" data-mv="ccw" title="หมุนซ้าย 15°">↺</button>
+      <input class="mv-rot size-slider" type="range" min="0" max="359" value="0" title="หมุนแผนที่ (หมุนแค่ภาพที่เห็น ไม่กระทบตัวกรอง)">
+      <span class="mv-deg hint">0°</span>
+      <button class="icon" type="button" data-mv="cw" title="หมุนขวา 15°">↻</button>
+      <button class="icon" type="button" data-mv="rot0" title="เลิกหมุน กลับ 0°">0°</button>
+      <span class="spacer"></span>
+      <span id="s-zonehint" class="hint">คลิกวงกลมครั้งแรกได้ต้นทาง คลิกอีกครั้งได้ปลายทาง</span>
+      <button id="s-zoneclear" class="icon danger" type="button" title="ล้างตัวกรองต้นทาง/ปลายทาง">🗑</button>
+    </div>
+    <div class="mapstage" id="s-zonestage"></div>
+  </details>
+
+  <!-- โหมดตาราง: คัดทีละหลายใบแล้วเก็บรวดเดียว (ต่อรูปให้อัตโนมัติ ไม่ต้องแต่ง) -->
+  <section id="s-gridpane" hidden>
+    <div class="gridbar">
+      <button id="s-selpage" class="chip" type="button">เลือกทั้งหน้า</button>
+      <button id="s-selnone" class="chip" type="button">ล้างที่เลือก</button>
+      <span id="s-selcount" class="count">เลือกไว้ 0 ใบ</span>
+      <span class="spacer"></span>
+      <button id="s-bulkskip" class="chip danger" type="button">✗ ไม่เอาที่เลือก</button>
+      <button id="s-bulktake" class="chip primary" type="button">✓ เก็บที่เลือกเข้าคลัง</button>
+    </div>
+    <div id="s-grid" class="srcgrid"></div>
+    <div class="gridbar">
+      <button id="s-prevpage" class="chip" type="button">← ก่อนหน้า</button>
+      <span id="s-pageinfo" class="count"></span>
+      <button id="s-nextpage" class="chip" type="button">ถัดไป →</button>
+      <span class="spacer"></span>
+      <progress id="s-bulkbar" max="100" value="0" hidden></progress>
+      <button id="s-bulkstop" class="chip danger" type="button" hidden>หยุด</button>
+    </div>
+  </section>
+
+  <div class="source-body" id="s-onepane">
+    <section class="sheetpane">
+      <div class="sheetbar">
+        <div class="tool-group" id="tools">
+          <button class="icon tool on" type="button" data-tool="none" title="ย้าย / ย่อขยายรูป — คลิกเลือกรูป แล้วลากกลางรูปเพื่อย้าย ลากมุมเพื่อย่อขยาย">✥</button>
+          <button class="icon tool" type="button" data-tool="pen" title="ปากกา — ลากวาดมือเปล่า">✎</button>
+          <button class="icon tool" type="button" data-tool="line" title="เส้นตรง — ลากขีดเส้นตรง ไม่มีหัวลูกศร">╱</button>
+          <button class="icon tool" type="button" data-tool="arrow" title="ลูกศร — ลากชี้จุด มีหัวลูกศรที่ปลาย">↗</button>
+          <button class="icon tool" type="button" data-tool="text" title="ข้อความ — คลิกตรงที่จะวาง แล้วพิมพ์">T</button>
+        </div>
+        <span class="swatches" id="swatches"></span>
+        <input id="s-width" class="size-slider" type="range" min="2" max="14" value="5" title="ความหนาของเส้น/ขนาดตัวอักษร">
+        <button id="s-undo" class="icon" type="button" title="ย้อนสิ่งที่เขียนล่าสุด 1 ขั้น (Ctrl+Z)">↶</button>
+        <button id="s-clearmarks" class="icon danger" type="button" title="ล้างสิ่งที่เขียนทั้งหมดในแผ่นนี้">⌫</button>
+        <span class="divider"></span>
+        <button id="s-delpanel" class="icon danger" type="button" disabled title="ลบรูปที่เลือกออกจากแผ่น (Delete)">🗑</button>
+        <button id="s-restore" class="icon" type="button" disabled title="คืนรูปที่เพิ่งลบกลับมา">⊕</button>
+      </div>
+
+      <div class="sheetwrap">
+        <canvas id="sheet"></canvas>
+        <p id="s-loading" class="sheet-loading">กำลังโหลด…</p>
+      </div>
+
+      <div class="sheetbar">
+        <label class="inline" title="จำนวนคอลัมน์ที่จะเรียงรูป">▦
+          <select id="s-cols">
+            <option value="0">อัตโนมัติ</option>
+            <option value="1">1</option><option value="2">2</option>
+            <option value="3">3</option><option value="4">4</option>
+          </select>
+        </label>
+        <label class="inline" title="ช่องไฟระหว่างรูป">↔ <input id="s-gap" class="size-slider" type="range" min="0" max="40" value="10"></label>
+        <label class="inline" title="ใส่เลขกำกับขั้น 1 2 3 บนรูป"><input id="s-numbers" type="checkbox" checked> ①</label>
+        <label class="inline" title="ความกว้างของไฟล์รูปที่จะได้ (พิกเซล)">⤢
+          <select id="s-size">
+            <option value="1920">1920</option>
+            <option value="2560" selected>2560</option>
+            <option value="3840">3840</option>
+          </select>
+        </label>
+        <button id="s-relayout" class="icon" type="button" title="จัดเรียงรูปใหม่เป็นตารางปกติ (ทิ้งที่ลากจัดเอง)">⊞</button>
+        <span class="spacer"></span>
+        <span id="s-dims" class="hint"></span>
+      </div>
+    </section>
+
+    <aside class="sourceside">
+      <h2 id="s-title">—</h2>
+      <p id="s-meta" class="hint"></p>
+      <p id="s-progress" class="count"></p>
+
+      <div class="form">
+        <label class="wide">ชื่อที่จะเก็บ <input id="s-name" type="text"></label>
+        <label>แมพ <select id="s-destmap"></select></label>
+        <label>ฝั่ง <select id="s-destside"></select></label>
+        <label>จุด <select id="s-destsite"></select></label>
+        <label>ตัวละคร <select id="s-destagent"></select></label>
+        <p id="s-dest" class="dest"></p>
+      </div>
+
+      <details id="s-pinbox" class="pinbox" open>
+        <summary>จิ้มหมุดบนแผนที่ <span id="s-pinstate" class="hint">ยังไม่จิ้ม</span></summary>
+        <div class="mapbar">
+            <button class="icon" type="button" data-mv="out" title="ซูมออก">−</button>
+            <span class="mv-zoom hint">100%</span>
+            <button class="icon" type="button" data-mv="in" title="ซูมเข้า">+</button>
+            <button class="icon" type="button" data-mv="fit" title="พอดีจอ (หรือดับเบิลคลิกบนแผนที่)">⛶</button>
+            <span class="divider"></span>
+            <button class="icon" type="button" data-mv="ccw" title="หมุนซ้าย 15°">↺</button>
+            <input class="mv-rot size-slider" type="range" min="0" max="359" value="0" title="หมุนแผนที่ (หมุนแค่ภาพที่เห็น พิกัดที่เก็บไม่ขยับ)">
+            <span class="mv-deg hint">0°</span>
+            <button class="icon" type="button" data-mv="cw" title="หมุนขวา 15°">↻</button>
+            <button class="icon" type="button" data-mv="rot0" title="เลิกหมุน กลับ 0°">0°</button>
+        </div>
+        <div class="mapstage small" id="src-mapstage"></div>
+        <div class="mapbar">
+          <span id="s-pinhint" class="hint">คลิก 2 ครั้ง: จุดยืน → จุดที่ลูกไปตก</span>
+          <span class="spacer"></span>
+          <button id="s-pinundo" class="icon" type="button" title="ยกเลิกคลิกแรก">↶</button>
+          <button id="s-pinclear" class="icon danger" type="button" title="ล้างหมุดที่จิ้มไว้">🗑</button>
+        </div>
+      </details>
+
+      <div class="decide">
+        <button id="s-skip" type="button" class="danger">✗ ไม่เอา</button>
+        <button id="s-take" type="button" class="primary">✓ เก็บเข้าคลัง</button>
+      </div>
+      <dl class="keys">
+        <dt>Enter</dt><dd>เก็บเข้าคลัง</dd>
+        <dt>→</dt><dd>ไม่เอา</dd>
+        <dt>Ctrl+Z</dt><dd>ย้อนที่เขียน</dd>
+        <dt>Delete</dt><dd>ลบรูปที่เลือก</dd>
+      </dl>
+    </aside>
+  </div>
+</div><!-- /tab-source -->
+
+<!-- แถบสั่งเหมาหลายใบ -->
+<div id="bulkbar" class="bulkbar" hidden>
+  <strong id="bulk-count"></strong>
+  <label>ตั้งสกิล <select id="bulk-ability"></select></label>
+  <button id="bulk-fav" type="button">★ ติดไม้ตาย</button>
+  <button id="bulk-unfav" type="button">เอาไม้ตายออก</button>
+  <button id="bulk-clear" type="button">ยกเลิกการเลือก</button>
+</div>
+
+<!-- กล่องเพิ่มรูป -->
+<dialog id="add-dialog">
+  <form method="dialog" id="add-form">
+    <h2>เพิ่มรูปเข้าคลัง</h2>
+    <p id="add-info" class="hint"></p>
+    <img id="add-preview" alt="">
+    <label class="wide">ชื่อ <input id="a-name" type="text" required></label>
+    <div class="row">
+      <label>แมพ <select id="a-map"></select></label>
+      <label>ฝั่ง <select id="a-side"></select></label>
+      <label>จุด <select id="a-site"></select></label>
+      <label>ตัวละคร <select id="a-agent"></select></label>
+    </div>
+    <p id="a-dest" class="dest"></p>
+    <menu>
+      <button value="cancel" type="submit">ยกเลิก</button>
+      <button value="ok" type="submit" class="primary">เพิ่ม</button>
+    </menu>
+  </form>
+</dialog>
+
+<p id="toast" class="toast" hidden></p>
+<p class="dropzone-hint">ลากไฟล์รูปมาวางในหน้านี้ หรือกด Ctrl+V วางจากคลิปบอร์ดได้เลย</p>
+
+<script src="mapview.js"></script>
+<script src="app.js"></script>
+<script src="source.js"></script>
+</body>
+</html>

@@ -1,0 +1,719 @@
+/* หน้าจัดการคลัง LineupMaster — แก้ไฟล์นี้แล้วกด refresh ในเบราว์เซอร์ได้เลย ไม่ต้องบิ้วใหม่
+ *
+ * ── แนวคิดของหน้าตา: "โต๊ะเขียนแบบที่มีช่องมองสีเข้มฝังอยู่" ─────────────────────────────
+ *
+ * ของที่เราต้องจ้องจริงๆ มีสองอย่างคือ **สกรีนช็อตไลน์อัพ** กับ **แผนที่** ซึ่งเป็นภาพมืดทั้งคู่
+ * ถ้าเอาไปวางบนพื้นมืดด้วยมันจะกลืนกันหมด ขอบหาย ดูยาก — หน้านี้เลยทำพื้นเป็นสีเทาอมเขียว
+ * อ่อนแบบกระดาษเขียนแบบ แล้ว**เจาะช่องมืดลงไป**เฉพาะตรงที่เป็นภาพ ภาพจึงมีขอบคมและเด่นที่สุด
+ * บนหน้าจอ ส่วนที่เหลือเงียบหมด
+ *
+ * กฎที่ยึดตลอดทั้งไฟล์:
+ *   1. **สีสดมีได้เฉพาะในช่องมืด** — เขียว/เหลือง/ฟ้า คือหมุดกับป้ายจุด (สีเดียวกับโปรแกรมหลัก
+ *      เป๊ะ เพื่อให้ความหมายตรงกันทั้งสองที่) ส่วนกรอบหน้าจอรอบนอกแทบไม่มีสีเลย
+ *   2. **โครงสร้างไม่มีมุมมน** มนได้เฉพาะของที่กดได้ — จะได้แยกออกทันทีว่าอะไรกดได้
+ *   3. **แผงแยกกันด้วยน้ำหนักสีพื้น ไม่ใช่ด้วยเส้นขอบ** — เส้นขอบในระบบนี้มีความหมายเดียว
+ *      คือ "อันนี้กำลังถูกเลือกอยู่" เห็นปุ๊บรู้ปั๊บแม้ในตารางรูป 190 ใบ
+ *   4. **ข้อมูลกำกับเรียงเป็นคอลัมน์ ไม่เอามาต่อกันด้วยจุดคั่น** — ตำแหน่งบอกว่าเป็นข้อมูลอะไร
+ *      กวาดตาลงมาเทียบกันได้ทั้งตาราง
+ */
+
+/* ---------- ตัวอักษร (ฝังมากับโปรแกรม ไม่ต้องต่อเน็ต) ---------- */
+/* Bai Jamjuree: ไทย+อังกฤษ ทรงแคบนิดๆ แบบตัวอักษรงานช่าง — ตัวเล็กก็ยังอ่านออก จอเลยจุของได้เยอะ */
+@font-face { font-family: "Bai Jamjuree"; font-style: normal; font-weight: 400; font-display: swap;
+  src: url("fonts/BaiJamjuree-400-thai.woff2") format("woff2");
+  unicode-range: U+02D7, U+0303, U+0331, U+0E01-0E5B, U+200C-200D, U+25CC; }
+@font-face { font-family: "Bai Jamjuree"; font-style: normal; font-weight: 400; font-display: swap;
+  src: url("fonts/BaiJamjuree-400-latin.woff2") format("woff2"); }
+@font-face { font-family: "Bai Jamjuree"; font-style: normal; font-weight: 500; font-display: swap;
+  src: url("fonts/BaiJamjuree-500-thai.woff2") format("woff2");
+  unicode-range: U+02D7, U+0303, U+0331, U+0E01-0E5B, U+200C-200D, U+25CC; }
+@font-face { font-family: "Bai Jamjuree"; font-style: normal; font-weight: 500; font-display: swap;
+  src: url("fonts/BaiJamjuree-500-latin.woff2") format("woff2"); }
+@font-face { font-family: "Bai Jamjuree"; font-style: normal; font-weight: 600; font-display: swap;
+  src: url("fonts/BaiJamjuree-600-thai.woff2") format("woff2");
+  unicode-range: U+02D7, U+0303, U+0331, U+0E01-0E5B, U+200C-200D, U+25CC; }
+@font-face { font-family: "Bai Jamjuree"; font-style: normal; font-weight: 600; font-display: swap;
+  src: url("fonts/BaiJamjuree-600-latin.woff2") format("woff2"); }
+/* Spline Sans Mono: ใช้เฉพาะ "ค่าที่เครื่องบอก" — ตัวเลข พิกัด เปอร์เซ็นต์ พาธไฟล์
+   ห้ามเอาไปใช้กับคำพูดของคน เพราะมันคือความกว้างเท่ากันเพื่อให้เลขเรียงตรงคอลัมน์ ไม่ใช่ลูกเล่น */
+@font-face { font-family: "Spline Sans Mono"; font-style: normal; font-weight: 400; font-display: swap;
+  src: url("fonts/SplineSansMono-400-latin.woff2") format("woff2"); }
+@font-face { font-family: "Spline Sans Mono"; font-style: normal; font-weight: 500; font-display: swap;
+  src: url("fonts/SplineSansMono-500-latin.woff2") format("woff2"); }
+
+:root {
+  /* พื้นผิว */
+  --table:   #d9ded7;   /* โต๊ะทำงาน — เทาอมเขียว ลึกพอที่จะไม่แสบตา */
+  --sheet:   #ebeee7;   /* แผงที่ยกขึ้นมา (แถบตัวกรอง ช่องรายละเอียด ช่องกรอก) */
+  --sheet-2: #f4f6f1;   /* ยกสูงสุด (กล่องโต้ตอบ ข้อความแจ้ง) */
+  --edge:    #bfc7bc;   /* เส้นโครงสร้าง — ใช้ให้น้อยที่สุด */
+  --glass:   #0d1114;   /* ช่องมองสีเข้มที่เจาะลงไปบนโต๊ะ */
+
+  /* ตัวอักษร */
+  --ink:     #1f262a;   /* คอนทราสต์กับพื้น 12:1 */
+  --ink-2:   #4e5a54;   /* 6.6:1 — ข้อมูลกำกับ */
+  --ink-3:   #6e7a73;   /* 3.8:1 — **ใช้กับเส้น/ลูกศร/ขีดคั่นเท่านั้น ห้ามใช้กับข้อความ** */
+
+  /* สีสั่งงาน — ทั้งหน้ามีสีเข้มแค่สองตัวนี้ */
+  --act:     #28454f;   /* น้ำเงินอมเขียวเข้ม = ปุ่มหลัก / ของที่เลือกอยู่ */
+  --act-2:   #3b6272;
+  --stop:    #8b3a3a;   /* แดงอิฐ = ของที่ลบแล้วไม่กลับมา */
+
+  /* สีข้อมูล — โผล่ได้เฉพาะในช่องมืด และต้องตรงกับโปรแกรมหลักเป๊ะ ไม่งั้นความหมายเพี้ยน */
+  --stand:   #4ade80;   /* เขียว = จุดยืน */
+  --target:  #ffd479;   /* เหลือง = จุดที่ลูกไปตก */
+  /* ฟ้า #7dd3fc = ป้ายจุด A/B/C วาดอยู่ใน mapview.js ไม่ได้ผ่าน CSS จึงไม่ต้องมีตัวแปรที่นี่ */
+  /* คู่สีเดียวกันแบบเข้ม ไว้ใช้บนพื้นอ่อน (สีสดอ่านไม่ออกบนพื้นอ่อน) */
+  --stand-ink:  #1d7a45;
+  --target-ink: #8a6000;
+  --alert-ink:  #9a5a00;
+
+  --r:   3px;          /* มนได้เฉพาะของที่กดได้ */
+  --gap: 12px;
+  --pad: 16px;
+}
+
+* { box-sizing: border-box; }
+
+/* ต้องมี !important — คลาสอย่าง .bulkbar ตั้ง display:flex ไว้ ซึ่งชนะ [hidden] ของเบราว์เซอร์
+   ทำให้ของที่สั่งซ่อนยังโผล่อยู่ (เจอมาแล้วกับแถบสั่งเหมา) */
+[hidden] { display: none !important; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--table);
+  color: var(--ink);
+  color-scheme: light;
+  font-family: "Bai Jamjuree", "Leelawadee UI", "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ค่าที่เครื่องบอก: เลข พิกัด พาธ */
+.num, .count, .mv-zoom, .mv-deg, .pv-zoom, #preview-path, #s-pageinfo, #s-dims {
+  font-family: "Spline Sans Mono", ui-monospace, Consolas, monospace;
+  font-feature-settings: "tnum" 1;
+}
+
+::selection { background: var(--act); color: var(--sheet-2); }
+
+/* ================= แถบสถานะบนสุด =================
+   ไม่มีหัวเรื่องตัวใหญ่ — เครื่องมือของตัวเองคนเดียวไม่ต้องมีป้ายชื่อร้าน เอาที่ว่างไปให้รูปดีกว่า
+   เหลือไว้แค่ชื่อเล็กๆ เหมือนยี่ห้อที่สลักบนตัวเครื่องมือ */
+.top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 var(--pad);
+  height: 42px;
+  background: var(--sheet);
+  border-bottom: 1px solid var(--edge);
+}
+.brand { display: flex; align-items: baseline; gap: 10px; flex: none; }
+.brand h1 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.brand p { margin: 0; font-size: 11px; color: var(--ink-2); }
+/* เส้นคั่นตั้ง แทนการเอาข้อมูลมาต่อกันด้วยจุด */
+.top .divider, .filters .divider, .mapbar .divider {
+  width: 1px; height: 16px; background: var(--edge); flex: none;
+}
+.search {
+  flex: 1;
+  min-width: 140px;
+  height: 27px;
+}
+.top-actions { display: flex; align-items: center; gap: 7px; flex: none; }
+
+/* ================= แท็บ ================= */
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 var(--pad);
+  background: var(--sheet);
+  border-bottom: 1px solid var(--edge);
+}
+.tab {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--ink-2);
+  padding: 7px 14px 8px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: inset 0 -2px 0 transparent;
+}
+.tab:hover { color: var(--ink); background: none; }
+.tab.on { color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--act); }
+
+/* ================= แถบตัวกรอง ================= */
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px var(--pad);
+  background: var(--table);
+  border-bottom: 1px solid var(--edge);
+}
+.filters label {
+  display: flex; align-items: center; gap: 5px;
+  color: var(--ink-2); font-size: 11.5px;
+}
+.spacer { flex: 1; }
+.count { color: var(--ink-2); font-size: 11.5px; white-space: nowrap; }
+.hint { font-size: 11px; color: var(--ink-2); }
+
+/* ---------- ช่องกรอก ---------- */
+select, input[type="text"], input[type="search"], textarea {
+  padding: 4px 7px;
+  border: 1px solid var(--edge);
+  border-radius: var(--r);
+  background: var(--sheet-2);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+  min-width: 0;
+}
+textarea { resize: vertical; line-height: 1.5; }
+select:focus-visible, input:focus-visible, textarea:focus-visible, button:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--act);
+  outline-offset: 1px;
+}
+input[type="checkbox"] { accent-color: var(--act); width: 14px; height: 14px; }
+input[type="range"] { accent-color: var(--act); }
+.size-slider { width: 76px; height: 16px; }
+
+/* ---------- ปุ่ม ---------- */
+button {
+  border: 1px solid var(--edge);
+  border-radius: var(--r);
+  background: var(--sheet-2);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 5px 11px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { background: #fff; border-color: var(--ink-3); }
+button:disabled { opacity: .4; cursor: default; }
+.primary { background: var(--act); border-color: var(--act); color: var(--sheet-2); font-weight: 500; }
+.primary:hover:not(:disabled) { background: var(--act-2); border-color: var(--act-2); color: #fff; }
+.danger { color: var(--stop); }
+.danger:hover:not(:disabled) { background: var(--stop); border-color: var(--stop); color: var(--sheet-2); }
+button.primary.danger { background: var(--stop); border-color: var(--stop); color: var(--sheet-2); }
+.chip { padding: 4px 9px; font-size: 11.5px; }
+.chip.small { padding: 3px 7px; font-size: 11px; }
+.chip.on, .toggle.on { background: var(--act); border-color: var(--act); color: var(--sheet-2); }
+.icon {
+  width: 26px; height: 26px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 13px; line-height: 1;
+}
+.icon.on { background: var(--act); border-color: var(--act); color: var(--sheet-2); }
+
+/* ================= ตัวเนื้อหา แท็บคลังของเรา ================= */
+.body {
+  --lib-w: 1fr;
+  display: grid;
+  grid-template-columns: minmax(0, var(--lib-w)) 7px minmax(420px, 1.3fr);
+  min-height: 0;
+  padding: var(--gap) var(--pad) var(--pad);
+}
+/* ต้องล็อกคอลัมน์ให้ลูกแต่ละตัวตรงๆ — ไม่งั้นพอซ่อนสองตัวแรกตอน "จอใหญ่" ตัวที่เหลือจะ
+   เลื่อนไปกินคอลัมน์ที่ 1 ซึ่งกว้าง 0 แล้วหน้าจอแบนเหลือเส้นเดียว (เจอมาแล้วตอนทดสอบ) */
+.body > .library { grid-column: 1; }
+.body > .splitter { grid-column: 2; }
+.body > .detail   { grid-column: 3; }
+.body.wide { grid-template-columns: 0 0 1fr; }
+.body.wide > .library, .body.wide > .splitter { display: none; }
+
+/* ตัวคั่นลากได้ — เส้นบางแต่พื้นที่กดกว้างกว่าที่เห็น จะได้จับไม่พลาด */
+.splitter { position: relative; cursor: col-resize; touch-action: none; }
+.splitter::after {
+  content: ""; position: absolute; inset: 0 3px;
+  background: var(--edge); transition: background .12s;
+}
+.splitter:hover::after, .splitter.dragging::after { background: var(--act); }
+.splitter.horiz { cursor: row-resize; }
+.splitter.horiz::after { inset: 3px 0; }
+body.splitting  { cursor: col-resize; user-select: none; }
+body.splitting-y { cursor: row-resize; user-select: none; }
+
+/* ---------- ซ้าย: แผ่นคอนแทค (รูปย่อทั้งคลัง) ---------- */
+.library { overflow: auto; min-height: 0; padding-right: 8px; }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+  grid-auto-rows: max-content;
+  gap: 10px;
+  align-content: start;
+}
+
+/* ไม่มีมุมมน ไม่มีเงา — แยกตัวออกจากพื้นโต๊ะด้วยการเป็นแผ่นสว่างกว่าเฉยๆ
+   เส้นขอบเก็บไว้ใช้ความหมายเดียวคือ "เลือกอยู่" */
+.card {
+  background: var(--sheet);
+  /* ไม่ให้ยืดเต็มความสูงแถว — แผ่นแต่ละใบสูงไม่เท่ากันตามจำนวนขั้น ปล่อยให้ก้นไม่เสมอกันไป
+     เหมือนแผ่นคอนแทคจริงๆ ดีกว่าเหลือช่องว่างเปล่าห้อยอยู่ใต้คำอธิบาย */
+  align-self: start;
+  cursor: pointer;
+  outline: 0 solid transparent;
+  outline-offset: -2px;
+  transition: outline-color .1s, background .1s;
+}
+.card:hover { background: var(--sheet-2); }
+.card.active { outline: 2px solid var(--act); background: var(--sheet-2); }
+.card.active .meta { background: var(--act); color: var(--sheet-2); }
+.card.active .slots, .card.active .name i, .card.active .name u { color: rgba(255, 255, 255, .72); }
+.card.active .slots .site { color: var(--sheet-2); }
+.card.picked { outline: 2px dashed var(--act); background: #e2e9e6; }
+/* รูปทั้งแผ่นต้องเห็นครบ — แผ่นไลน์อัพเป็นภาพหลายขั้นต่อกัน ถ้า crop จะตัดขั้นตอนหายไปเลย
+   และ**ไม่บังคับสัดส่วนกรอบ** ปล่อยให้สูงตามแผ่นจริง เพราะแผ่น 3 ขั้นเตี้ยและกว้างกว่าแผ่นขั้นเดียว
+   มาก ถ้าไปบังคับกรอบเดียวกันหมดจะเหลือขอบดำครึ่งช่อง กลายเป็นกำแพงสีดำทั้งตาราง */
+.card img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 210px;
+  object-fit: contain;
+  background: var(--glass);
+  /* "auto 5/2" = ใช้สัดส่วนจริงของรูปถ้ารู้แล้ว ถ้ายังไม่รู้ให้จองที่ไว้ 5:2 ก่อน — ต้องมีตัวสำรอง
+     ไม่งั้นรูปที่ยังโหลดไม่เสร็จจะสูง 0 แล้วตารางกระโดดทั้งหน้าตอนรูปทยอยขึ้นทีละใบ */
+  aspect-ratio: auto 5 / 2;
+}
+.card .meta { padding: 6px 8px 7px; }
+.card .name {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card .name i { font-style: normal; color: var(--ink-3); margin: 0 2px; }
+.card .name u {
+  text-decoration: none; color: var(--ink-2);
+  font-family: "Spline Sans Mono", ui-monospace, Consolas, monospace; font-size: 10px;
+}
+/* ข้อมูลกำกับเรียงเป็นคอลัมน์ตายตัว — กวาดตาลงมาเทียบกันได้ทั้งตาราง */
+.card .slots, .srccell .slots {
+  margin-top: 4px;
+  display: grid;
+  grid-template-columns: 14px 26px 1fr auto;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  color: var(--ink-2);
+}
+.card .slots .site, .srccell .slots .site { font-weight: 600; color: var(--ink); }
+.card .slots .abil, .srccell .slots .abil { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .slots .fav  { color: var(--target-ink); }
+/* ยังไม่จิ้มหมุด = ขีดเหลืองที่ขอบซ้ายของแถบคำอธิบาย กวาดตาหาได้ทั้งตารางโดยไม่ต้องอ่าน */
+.card.nopin .meta { box-shadow: inset 3px 0 0 var(--alert-ink); padding-left: 10px; }
+
+.empty { padding: 48px 12px; text-align: center; color: var(--ink-2); }
+
+/* ---------- ขวา: ช่องรายละเอียด ---------- */
+.detail {
+  background: var(--sheet);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+  padding: var(--gap);
+  margin-left: var(--gap);
+}
+.body.wide > .detail { margin-left: 0; }
+.placeholder { color: var(--ink-2); text-align: center; padding: 64px 12px; }
+
+/* แถวบน (รูป+แผนที่) กับแถวล่าง (ฟอร์ม) ปรับสัดส่วนได้ด้วยการลากตัวคั่นแนวนอน
+   **แถวล่างต้องเป็น fr ด้วย** ไม่ใช่ auto — ถ้าเป็น auto ฟอร์มจะกินความสูงตามเนื้อหาจนไม่เหลือ
+   ที่ว่างให้แบ่ง แล้วลากตัวคั่นเท่าไหร่ก็ไม่ขยับ (เจอมาแล้วตอนทดสอบ) */
+#editor {
+  --panes-h: 1.6fr;
+  display: grid;
+  grid-template-rows: auto minmax(160px, var(--panes-h)) 7px minmax(86px, 1fr);
+  min-height: 0;
+  flex: 1;
+}
+
+/* จังหวะเด่นจังหวะเดียวของหน้านี้: เส้นทางของไลน์อัพเขียนเป็นตัวหนังสือที่วิ่งจากต้นทางไปปลายทาง
+   — รูปทรงเดียวกับเส้นที่ลากอยู่บนแผนที่ข้างล่าง แค่เปลี่ยนจากเส้นเป็นตัวอักษร */
+.route-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 9px;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.2;
+  min-width: 0;
+}
+.route-line .a, .route-line .b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.route-line::after { content: ""; flex: 1; }   /* ดันคู่เส้นทางให้ชิดซ้าย ที่ว่างไปอยู่ขวาสุด */
+.route-line .b { color: var(--target-ink); }
+.route-line .track {
+  flex: 0 1 auto;
+  width: clamp(28px, 10vw, 150px);   /* ล็อกไว้ ไม่งั้นพอจอกว้างสองปลายจะลอยห่างจนอ่านไม่เป็นคู่กัน */
+  height: 1px; background: var(--ink-3); position: relative;
+}
+.route-line .track::after {
+  content: ""; position: absolute; right: -1px; top: -3px;
+  border: 3.5px solid transparent; border-left-color: var(--ink-3);
+}
+.route-line.plain { font-size: 16px; }
+.route-line.plain .track, .route-line.plain .b { display: none; }
+
+.panes {
+  --pv-w: 1fr;
+  display: grid;
+  grid-template-columns: minmax(0, var(--pv-w)) 7px minmax(0, 1fr);
+  min-height: 0;
+}
+.panes > .preview  { grid-column: 1; }
+.panes > .splitter { grid-column: 2; }
+.panes > .mappane  { grid-column: 3; }
+@media (max-width: 1150px) {
+  .panes { grid-template-columns: 1fr; }
+  .panes > .splitter { display: none; }
+  .panes > .mappane { grid-column: 1; margin-left: 0; }
+}
+
+figure { margin: 0; }
+.preview, .mappane { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.mappane { margin-left: var(--gap); }
+
+/* ---------- ช่องมองสีเข้ม: สกรีนช็อต และ แผนที่ ----------
+   ทั้งคู่คือ "หน้าต่างที่เจาะลงไปบนโต๊ะ" — พื้นเข้ม ไม่มีมุมมน มีเส้นในบางๆ กันภาพเลอะขอบ */
+.previewstage, .mapstage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  background: var(--glass);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .09);
+  touch-action: none;
+}
+.previewstage { cursor: grab; }
+.previewstage.grabbing { cursor: grabbing; }
+.previewstage img { position: absolute; top: 0; left: 0; transform-origin: 0 0; max-width: none; }
+.mapstage { cursor: crosshair; aspect-ratio: 1 / 1; }
+.mappane .mapstage { aspect-ratio: auto; }
+.mapstage.small { aspect-ratio: 4 / 3; max-height: 290px; }
+.mv-svg { display: block; width: 100%; height: 100%; }
+.mv-svg text { pointer-events: none; user-select: none; }
+/* จังหวะเคลื่อนไหวเดียวในหน้า: เลือกไลน์อัพใบไหน เส้นวิถีของใบนั้นค่อยๆ ลากตัวเองออกมาบนแผนที่
+   — บอกว่า "อันนี้แหละที่เพิ่งเปลี่ยน" ไม่ใช่แอนิเมชันประดับ */
+.mv-svg .traj { stroke-dasharray: var(--len); stroke-dashoffset: var(--len); animation: draw .26s ease-out forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+
+.preview figcaption {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: var(--ink-2);
+  word-break: break-all;
+}
+
+.mapbar {
+  display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+  margin-bottom: 5px; min-height: 26px;
+}
+.mapbar:last-child { margin: 5px 0 0; }
+.mapbar strong { font-size: 12px; }
+.mv-zoom, .mv-deg, .pv-zoom { font-size: 11px; color: var(--ink-2); min-width: 32px; }
+
+/* ---------- ฟอร์มแก้ไข ----------
+   จุดสำคัญ: ในโปรแกรมนี้ "ตำแหน่งของไฟล์คือการจัดหมวด" (แมพ/ฝั่ง/ตัวละคร/จุด = โฟลเดอร์จริงๆ)
+   ฟอร์มเลยทำหน้าตาเป็น **พาธไฟล์ที่แก้ได้ทีละส่วน** แทนที่จะเป็นช่องเลือก 5 ช่องแยกกัน
+   แล้วค่อยเฉลยพาธซ้ำข้างล่างอีกที — เห็นโครงข้อมูลจริงตั้งแต่แรก และประหยัดที่ไปหนึ่งแถวครึ่ง */
+.form {
+  min-height: 0;
+  overflow: auto;
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.pathbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 8px;
+  background: var(--table);
+}
+.pathbar .sep { color: var(--ink-3); font-size: 13px; }
+.pathbar .fixed {
+  font-family: "Spline Sans Mono", ui-monospace, Consolas, monospace;
+  font-size: 11.5px; color: var(--ink-2);
+}
+.pathbar select { background: var(--sheet-2); }
+.pathbar input { flex: 1; min-width: 120px; }
+.form .row { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.form .row > label { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--ink-2); }
+.form .row > label.grow { flex: 1; min-width: 150px; }
+.form .row > label.grow input { flex: 1; }
+.form textarea { width: 100%; }
+.form-actions { display: flex; gap: 7px; margin-top: 2px; }
+.form-actions .spacer { flex: 1; }
+
+/* ================= แถบสั่งเหมาหลายใบ ================= */
+.bulkbar {
+  position: fixed;
+  left: 50%; bottom: 16px;
+  transform: translateX(-50%);
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 12px;
+  background: var(--act);
+  color: var(--sheet-2);
+  box-shadow: 0 10px 28px rgba(20, 30, 28, .3);
+  z-index: 40;
+}
+.bulkbar label { display: flex; align-items: center; gap: 5px; font-size: 11.5px; }
+.bulkbar .count { color: rgba(255, 255, 255, .78); }
+.bulkbar button { background: transparent; border-color: rgba(255, 255, 255, .34); color: var(--sheet-2); }
+.bulkbar button:hover:not(:disabled) { background: rgba(255, 255, 255, .14); border-color: var(--sheet-2); color: #fff; }
+.bulkbar select { background: var(--sheet-2); border-color: transparent; }
+
+/* ================= แท็บหาไลน์อัพจากเว็บ ================= */
+#tab-library { display: grid; grid-template-rows: auto 1fr; min-height: 0; }
+/* แท็บนี้มีลูกไม่คงที่ (กล่องแผนที่กรองพับ/ซ่อนได้ · สลับตาราง↔ทีละใบ) ถ้าใช้ grid ที่ระบุแถว
+   ตายตัว พอลูกหายไปหนึ่งอันความสูงจะเพี้ยนทันที — flex column ปลอดภัยกว่า */
+#tab-source { display: flex; flex-direction: column; min-height: 0; }
+#tab-source > .filters, #tab-source > .pinbox { flex: none; }
+#s-gridpane { flex: 1; min-height: 0; display: grid; grid-template-rows: auto 1fr auto; }
+#s-onepane  { flex: 1; min-height: 0; }
+
+/* กล่องพับได้ (จิ้มหมุด / กรองด้วยแผนที่) */
+.pinbox {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: var(--table);
+}
+.pinbox > summary {
+  cursor: pointer; font-size: 12px; font-weight: 500; user-select: none;
+  display: flex; align-items: center; gap: 8px;
+}
+.pinbox > summary::marker { color: var(--ink-3); }
+.pinbox .mapbar { margin-top: 8px; }
+.pinbox.wide-box { margin: var(--gap) var(--pad) 0; }
+.pinbox.wide-box .mapstage { aspect-ratio: auto; height: 44vh; max-height: 44vh; }
+
+.source-body {
+  display: grid;
+  grid-template-columns: 1fr minmax(290px, 360px);
+  gap: var(--gap);
+  padding: var(--gap) var(--pad) var(--pad);
+  min-height: 0;
+}
+.sheetpane { display: grid; grid-template-rows: auto 1fr auto; gap: 6px; min-height: 0; }
+.sheetbar {
+  display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+  padding: 5px 7px;
+  background: var(--sheet);
+}
+.sheetbar .inline { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--ink-2); }
+.tool-group { display: flex; gap: 3px; }
+.tool.on { background: var(--act); border-color: var(--act); color: var(--sheet-2); }
+.swatches { display: flex; gap: 3px; }
+.swatch {
+  width: 18px; height: 18px; padding: 0;
+  border: 1px solid var(--edge); border-radius: 50%;
+}
+.swatch.on { outline: 2px solid var(--act); outline-offset: 1px; }
+.divider { width: 1px; align-self: stretch; background: var(--edge); margin: 0 3px; }
+
+.sheetwrap {
+  position: relative;
+  display: grid; place-items: center;
+  background: var(--glass);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .09);
+  overflow: auto;
+  min-height: 0;
+}
+#sheet { max-width: 100%; max-height: 100%; }
+#sheet.drawing { cursor: crosshair; }
+#sheet.picking { cursor: default; }
+.sheet-loading {
+  position: absolute; margin: 0;
+  color: var(--ink-3); font-size: 12px;
+}
+.sourceside { overflow: auto; min-height: 0; background: var(--sheet); padding: var(--gap); }
+.sourceside h2 { margin: 0 0 3px; font-size: 15px; font-weight: 600; line-height: 1.25; }
+.decide { display: flex; gap: 7px; margin-top: 12px; }
+.decide button { flex: 1; padding: 7px; }
+
+/* ---------- ตารางคัดของจากเว็บ ---------- */
+.gridbar { display: flex; align-items: center; gap: 9px; padding: 7px var(--pad); }
+.gridbar progress { width: 170px; height: 7px; }
+.srcgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(214px, 1fr));
+  /* ต้องระบุ max-content — แถวแบบ auto จะถูกบีบให้พอดีความสูงกรอบ (ช่องเหลือ 73px รูปกับ
+     ข้อความเลยโดนตัดหายหมด) เพราะกรอบตารางมีความสูงตายตัวจาก grid ของ #s-gridpane */
+  grid-auto-rows: max-content;
+  gap: 10px;
+  padding: 0 var(--pad) var(--gap);
+  align-content: start;
+  overflow: auto;
+}
+.srccell {
+  position: relative;
+  background: var(--sheet);
+  cursor: pointer;
+  outline: 0 solid transparent;
+  outline-offset: -2px;
+  transition: outline-color .1s, background .1s;
+}
+.srccell:hover { background: var(--sheet-2); }
+.srccell.on { outline: 2px solid var(--act); }
+.srccell.owned { opacity: .5; }
+.srccell img {
+  display: block; width: 100%;
+  aspect-ratio: 16 / 9; object-fit: cover;
+  background: var(--glass);
+}
+.srccell .cap { padding: 6px 8px 8px; }
+.srccell .cap b {
+  font-size: 12px; font-weight: 500; line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.srccell .cap > .route { margin-top: 2px; font-size: 11px; color: var(--ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.srccell .slots { grid-template-columns: 14px 26px 1fr auto; }
+.srccell .tick {
+  position: absolute; top: 6px; left: 6px; width: 17px; height: 17px;
+  cursor: pointer; z-index: 2;
+}
+.srccell .badges { position: absolute; top: 5px; right: 5px; display: flex; gap: 3px; }
+.badge {
+  font-size: 10px; line-height: 1.6; padding: 0 5px;
+  background: rgba(13, 17, 20, .8); color: var(--sheet-2);
+}
+.badge.pin-full { color: var(--stand); }
+.badge.pin-half { color: var(--target); }
+.badge.pin-none { color: var(--ink-3); }
+.badge.owned    { color: #f0a9a9; }
+
+/* ================= กล่องโต้ตอบ / ข้อความแจ้ง ================= */
+dialog {
+  border: 1px solid var(--edge);
+  border-radius: var(--r);
+  background: var(--sheet-2);
+  color: var(--ink);
+  box-shadow: 0 18px 50px rgba(20, 30, 28, .28);
+  width: min(560px, 92vw);
+  padding: 18px;
+}
+dialog::backdrop { background: rgba(31, 38, 42, .42); }
+dialog h2 { margin: 0 0 3px; font-size: 15px; font-weight: 600; }
+dialog img {
+  width: 100%; max-height: 220px; object-fit: contain;
+  background: var(--glass); margin: 10px 0;
+}
+dialog .row { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 9px; }
+dialog label { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: var(--ink-2); flex: 1; }
+dialog label.wide { margin-top: 9px; }
+dialog menu { display: flex; justify-content: flex-end; gap: 7px; margin: 16px 0 0; padding: 0; }
+
+.toast {
+  position: fixed;
+  left: 50%; top: 12px;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 8px 14px;
+  background: var(--ink);
+  color: var(--sheet-2);
+  box-shadow: 0 10px 28px rgba(20, 30, 28, .3);
+  font-size: 12.5px;
+  z-index: 60;
+  max-width: 78vw;
+}
+.toast.ok   { box-shadow: inset 3px 0 0 var(--stand), 0 10px 28px rgba(20, 30, 28, .3); }
+.toast.warn { box-shadow: inset 3px 0 0 var(--target), 0 10px 28px rgba(20, 30, 28, .3); }
+.toast.err  { background: var(--stop); }
+
+.dropzone-hint {
+  position: fixed; right: var(--pad); bottom: 8px; margin: 0;
+  font-size: 10.5px; color: var(--ink-2); pointer-events: none;
+}
+body.dragging::after {
+  content: "วางรูปที่นี่เพื่อเพิ่มเข้าคลัง";
+  position: fixed; inset: 0;
+  display: grid; place-items: center;
+  background: rgba(217, 222, 215, .9);
+  box-shadow: inset 0 0 0 3px var(--act);
+  color: var(--act);
+  font-size: 20px; font-weight: 600;
+  z-index: 80;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}
+
+#s-meta { white-space: pre-line; line-height: 1.5; }
+
+/* คีย์ลัดเป็นรายการคู่จริงๆ ไม่ใช่ประโยคยาวที่เอาจุดมาคั่น — ตาไล่หาปุ่มที่อยากรู้ได้เร็วกว่า */
+.keys {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 9px;
+  margin: 12px 0 0;
+  font-size: 11px;
+  color: var(--ink-2);
+}
+.keys dt {
+  font-family: "Spline Sans Mono", ui-monospace, Consolas, monospace;
+  font-size: 10.5px;
+  color: var(--ink);
+  background: var(--table);
+  padding: 0 5px;
+  justify-self: start;
+}
+.keys dd { margin: 0; }
+
+/* ---------- จอแคบ ----------
+   เครื่องมือนี้ทำมาใช้บนจอคอมกว้างๆ (ต้องวางรูปกับแผนที่เคียงกัน) แต่พอหน้าต่างแคบลงก็ไม่ควร
+   พังทับกัน — เลิกตรึงความสูงทั้งหน้า ปล่อยให้ทุกอย่างไหลลงล่างแล้วเลื่อนดูตามปกติ */
+@media (max-width: 1000px) {
+  html, body { height: auto; }
+  body { min-height: 100vh; grid-template-rows: auto auto auto; overflow: auto; }
+  .top { height: auto; flex-wrap: wrap; padding: 8px var(--pad); }
+  .search { order: 3; flex-basis: 100%; }
+
+  #tab-library, #tab-source { display: block; min-height: 0; }
+  .body, .source-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap);
+  }
+  .body > .splitter, .panes > .splitter, #form-split { display: none; }
+  .library, .detail, .srcgrid, #s-gridpane, #s-onepane { overflow: visible; min-height: 0; }
+  .detail { margin-left: 0; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+
+  /* ช่องมองตั้งความสูงเป็นหน่วยจอ ไม่งั้นพอพ่อแม่ไม่ตรึงความสูงแล้วมันจะยุบเหลือ 0 */
+  #editor { display: flex; flex-direction: column; }
+  .panes { display: flex; flex-direction: column; gap: var(--gap); }
+  .mappane { margin-left: 0; }
+  .previewstage, .mapstage, .mappane .mapstage { flex: none; height: 52vh; }
+  .pinbox.wide-box .mapstage { height: 52vh; }
+  .form { overflow: visible; }
+  .bulkbar { position: static; transform: none; margin: var(--gap) var(--pad); }
+}
