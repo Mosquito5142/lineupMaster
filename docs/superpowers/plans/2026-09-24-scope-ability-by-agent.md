@@ -113,7 +113,7 @@ test("keptValue: ยังเป็นของตัวนี้ = คงไว
 
 - [ ] **Step 2: รันให้เห็นว่าล้ม**
 
-Run: `node --test tests/web/`
+Run: `node --test "tests/web/*.test.js"`
 Expected: FAIL ด้วย `Cannot find module '../../assets/web/scope.js'`
 
 - [ ] **Step 3: เขียนโค้ดขั้นต่ำให้ผ่าน**
@@ -162,7 +162,7 @@ if (typeof module !== "undefined") module.exports = { sourceAbilityChoices, kept
 
 - [ ] **Step 4: รันให้เห็นว่าผ่าน**
 
-Run: `node --test tests/web/`
+Run: `node --test "tests/web/*.test.js"`
 Expected: `# pass 6` และ `# fail 0`
 
 - [ ] **Step 5: Commit (ถามผู้ใช้ก่อน ดู Global Constraints)**
@@ -452,6 +452,14 @@ git add assets/web/app.js
 git commit -m "เว็บ/คลัง: ช่องสกิลของตัวกรองและตั้งสกิลทุกใบ แคบตามตัวละครเหมือนเวอร์ชันเดสก์ท็อป"
 ```
 
+> **แก้ไขหลังรีวิว:** ข้อความข้างบน (สโคป `bulk-ability` ตาม `f-agent` ให้ตรงกับเดสก์ท็อป) เปลี่ยนใจ
+> ทีหลัง — เว็บมี `picked` (Set ของการ์ดที่ติ๊กไว้) ที่ค้างอยู่ข้ามการเปลี่ยนตัวกรองได้ ซึ่งเดสก์ท็อป
+> ไม่มีแนวคิดนี้ ถ้า `bulk-ability` ยังอิงตัวกรองอยู่ ติ๊กการ์ดของตัวละครหนึ่งไว้แล้วสลับตัวกรองไป
+> ตัวละครอื่น จะกลายเป็นเสนอสกิลผิดตัวแล้วกดยิงใส่การ์ดที่ซ่อนอยู่ทันทีโดยไม่มีการยืนยัน จึงเปลี่ยน
+> ให้ `bulk-ability` สโคปตาม **การ์ดที่ติ๊กไว้** แทน ผ่านฟังก์ชันใหม่ `scopeBulkAbility()` (เรียกจาก
+> `syncBulk()` และหลัง `load()`) ไม่ใช่ `scopeLibraryAbility()` อีกต่อไป — ดูรายละเอียดใน commit ที่
+> ตามหลัง commit ของ Task นี้
+
 ---
 
 ### Task 4: ส่งให้ตัวที่ใช้จริง (`dist`)
@@ -478,7 +486,7 @@ Expected: ไม่มี output
 
 - [ ] **Step 4: รันเทสต์ทั้งหมดอีกรอบ**
 
-Run: `node --test tests/web/`
+Run: `node --test "tests/web/*.test.js"`
 Expected: `# pass 6`, `# fail 0`
 
 - [ ] **Step 5: บอกผู้ใช้** ว่าถ้าเปิดหน้าจัดการคลังค้างไว้อยู่ ให้กด refresh (Ctrl+F5) ก็ได้ผลเลย ไม่ต้องปิดโปรแกรม

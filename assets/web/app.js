@@ -60,13 +60,15 @@ function abilityOptions(agent) {
   return list.map((a) => [a.id, a.th]);
 }
 
-/** ช่องสกิลของตัวกรองบนสุด + "ตั้งสกิลให้ทุกใบ" แคบตามตัวละครที่กรองอยู่ (เหมือน tools/manage.py)
- * ต้องเรียกใหม่ทุกครั้งที่เปลี่ยน f-agent · ตั้งสกิลทุกใบรีเซ็ตเป็นว่างเสมอ เพราะเป็นปุ่มสั่งงาน
+/** ช่องสกิลของตัวกรองบนสุด (f-ability) แคบตามตัวละครที่กรองอยู่
+ * ต่างจากเดสก์ท็อป (tools/manage.py) ตรงที่เดสก์ท็อปรีเซ็ตตัวกรองสกิลเป็นว่างทุกครั้งที่เปลี่ยน
+ * ตัวละคร ส่วนเว็บคงค่าเดิมไว้ถ้ายังเป็นของตัวละครใหม่ได้ (ดู keptValue) — ตั้งใจให้ดีกว่าเดสก์ท็อป
+ * ไม่ใช่เหมือนกันเป๊ะ · ต้องเรียกใหม่ทุกครั้งที่เปลี่ยน f-agent
+ * (ช่อง "ตั้งสกิลให้ทุกใบ" ไม่ได้แคบตามตัวกรองนี้ ดู scopeBulkAbility ด้านล่าง)
  */
 function scopeLibraryAbility() {
   const choices = abilityOptions($("f-agent").value);
   fill($("f-ability"), choices, { blank: ALL, value: keptValue(choices, $("f-ability").value) });
-  fill($("bulk-ability"), choices, { blank: "— เลือกสกิล —", value: "" });
 }
 
 /* ---------- โหลด + วาด ---------- */
@@ -75,6 +77,7 @@ async function load(keepRel = null) {
   const keep = keepRel || current;
   buildFilterOptions();
   render();
+  scopeBulkAbility();   // STATE เพิ่งเปลี่ยน การ์ดที่ติ๊กไว้อาจถูกแก้ตัวละครไปแล้ว ต้องเช็คใหม่
   if (keep && STATE.lineups.some((lu) => lu.rel === keep)) select(keep);
   else if (!STATE.lineups.some((lu) => lu.rel === current)) { current = null; showEditor(); }
   $("subtitle").textContent = `คลัง ${STATE.lineups.length} ใบ`;
@@ -473,9 +476,25 @@ function togglePick(rel) {
   syncBulk();
 }
 
+/** ช่อง "ตั้งสกิลให้ทุกใบ" แคบตาม **การ์ดที่ติ๊กไว้** (picked) ไม่ใช่ตัวกรอง f-agent
+ * picked ค้างอยู่ข้ามการเปลี่ยนตัวกรองได้ (ติ๊กโซวาไว้ 5 ใบ แล้วสลับตัวกรองไปไซเฟอร์) ถ้าช่องนี้
+ * อิงตัวกรองแทน จะเสนอสกิลของไซเฟอร์ แล้วกดเลือกก็ยิงใส่การ์ดโซวาที่ซ่อนอยู่ทันทีโดยไม่ถาม
+ * ติ๊กไว้ตัวละครเดียวกันหมด = แคบตามตัวนั้น ติ๊กปนตัวละครอื่นหรือยังไม่ได้ติ๊กเลย = โชว์ทั้งหมด
+ * ต้องเรียกใหม่ทุกครั้งที่ picked เปลี่ยน (เรียกจาก syncBulk) และหลัง load() คืนข้อมูลใหม่มา
+ * เผื่อการ์ดที่ติ๊กไว้ถูกแก้ตัวละครไปจากที่อื่น
+ */
+function scopeBulkAbility() {
+  const agents = new Set(
+    STATE.lineups.filter((lu) => picked.has(lu.rel)).map((lu) => lu.agent)
+  );
+  const agent = agents.size === 1 ? [...agents][0] : "";
+  fill($("bulk-ability"), abilityOptions(agent), { blank: "— เลือกสกิล —", value: "" });
+}
+
 function syncBulk() {
   $("bulkbar").hidden = picked.size === 0;
   $("bulk-count").textContent = `เลือกไว้ ${picked.size} ใบ`;
+  scopeBulkAbility();
 }
 
 async function runBulk(payload) {
