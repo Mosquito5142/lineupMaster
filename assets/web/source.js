@@ -338,26 +338,33 @@ function buildOwned() {
 const ownedKey = (l) => routeKey(l.m, l.a, l.from, l.to);
 const isOwned = (l) => { const k = ownedKey(l); return !!k && SRC.owned.has(k); };
 
+const agentTh = (id) => (STATE.agents.find((x) => x.id === id) || {}).th || id;
+
+/** ช่องสกิลของแท็บนี้ แคบตามตัวละครที่เลือก — ต้องเรียกใหม่ทุกครั้งที่เปลี่ยน s-agent
+ * (ดู sourceAbilityChoices ใน scope.js) สกิลเดิมยังเป็นของตัวใหม่ก็คงไว้ ไม่ใช่ก็กลับเป็นทั้งหมด
+ */
+function scopeSourceAbility() {
+  const choices = sourceAbilityChoices(SRC.catalog, $("s-agent").value, agentTh);
+  fill($("s-ability"), choices, { blank: ALL, value: keptValue(choices, $("s-ability").value) });
+}
+
 function buildSourceFilters() {
   const agents = [...new Set(SRC.catalog.map((l) => l.a))].sort();
   const maps = [...new Set(SRC.catalog.map((l) => l.m))].sort();
-  const abilities = [...new Set(SRC.catalog.map((l) => l.ab).filter(Boolean))].sort();
   const diffs = [...new Set(SRC.catalog.map((l) => l.diff).filter(Boolean))];
   const known = new Set(STATE.maps);
 
-  fill($("s-agent"), agents.map((a) => {
-    const th = (STATE.agents.find((x) => x.id === a) || {}).th || a;
-    return [a, `${th} (${SRC.catalog.filter((l) => l.a === a).length})`];
-  }), { blank: ALL });
+  fill($("s-agent"), agents.map((a) =>
+    [a, `${agentTh(a)} (${SRC.catalog.filter((l) => l.a === a).length})`]), { blank: ALL });
   fill($("s-map"), maps.map((m) => [m, known.has(m) ? m : `${m} (ไม่มีในคลังเรา)`]), { blank: ALL });
   fill($("s-side"), [["attack", "บุก"], ["defense", "ตั้งรับ"]], { blank: ALL });
   fill($("s-site"), [["A", "A"], ["B", "B"], ["C", "C"], ["MID", "MID"]], { blank: ALL });
-  fill($("s-ability"), abilities.map((a) => [a, a]), { blank: ALL });
   fill($("s-diff"), diffs.map((d) => [d, d]), { blank: ALL });
   fill($("s-src"), SRC.sources.map((s) => [s.id, s.name]), { blank: ALL });
 
   const sova = $("s-agent").querySelector('option[value="sova"]');
   if (sova) $("s-agent").value = "sova";
+  scopeSourceAbility();          // หลังตั้งตัวละครเริ่มต้น ช่องสกิลจะได้เป็นของโซวาตั้งแต่เปิดแท็บ
   buildRouteFilters();
 
   fill($("s-destmap"), STATE.maps.map((m) => [m, m]));
@@ -1022,10 +1029,12 @@ function wireSource() {
     });
   }
 
-  for (const id of ["s-agent", "s-side", "s-site", "s-ability", "s-from", "s-to",
+  for (const id of ["s-side", "s-site", "s-ability", "s-from", "s-to",
                     "s-steps", "s-diff", "s-src", "s-owned"]) {
     $(id).addEventListener("change", refilterSource);
   }
+  // เปลี่ยนตัวละคร = ช่องสกิลต้องเหลือแค่ของตัวนั้นก่อน แล้วค่อยกรอง (ไม่งั้นสกิลตัวเก่าค้างกรองอยู่)
+  $("s-agent").addEventListener("change", () => { scopeSourceAbility(); refilterSource(); });
   $("s-q").addEventListener("input", debounceSource(refilterSource, 200));
   // เปลี่ยนแมพ = ชื่อโซนต้นทาง/ปลายทางเปลี่ยนตามทั้งชุด และแผนที่กรองต้องเปลี่ยนรูปด้วย
   $("s-map").addEventListener("change", () => {
