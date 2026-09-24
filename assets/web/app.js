@@ -60,6 +60,15 @@ function abilityOptions(agent) {
   return list.map((a) => [a.id, a.th]);
 }
 
+/** ช่องสกิลของตัวกรองบนสุด + "ตั้งสกิลให้ทุกใบ" แคบตามตัวละครที่กรองอยู่ (เหมือน tools/manage.py)
+ * ต้องเรียกใหม่ทุกครั้งที่เปลี่ยน f-agent · ตั้งสกิลทุกใบรีเซ็ตเป็นว่างเสมอ เพราะเป็นปุ่มสั่งงาน
+ */
+function scopeLibraryAbility() {
+  const choices = abilityOptions($("f-agent").value);
+  fill($("f-ability"), choices, { blank: ALL, value: keptValue(choices, $("f-ability").value) });
+  fill($("bulk-ability"), choices, { blank: "— เลือกสกิล —", value: "" });
+}
+
 /* ---------- โหลด + วาด ---------- */
 async function load(keepRel = null) {
   STATE = await api("state");
@@ -78,19 +87,17 @@ function buildFilterOptions() {
   const sides = STATE.sides.map((s) => [s.id, s.th]);
   const sites = STATE.sites.map((s) => [s, s.toUpperCase()]);
   const agents = STATE.agents.map((a) => [a.id, a.th]);
-  const abilities = STATE.abilities.map((a) => [a.id, a.th]);
 
   if (!filtersBuilt) {
     fill($("f-map"), maps, { blank: ALL });
     fill($("f-side"), sides, { blank: ALL });
     fill($("f-site"), sites, { blank: ALL });
     fill($("f-agent"), agents, { blank: ALL });
-    fill($("f-ability"), abilities, { blank: ALL });
+    scopeLibraryAbility();
     for (const select of ["e-map", "a-map"]) fill($(select), maps);
     for (const select of ["e-side", "a-side"]) fill($(select), sides);
     for (const select of ["e-site", "a-site"]) fill($(select), sites);
     for (const select of ["e-agent", "a-agent"]) fill($(select), agents);
-    fill($("bulk-ability"), abilities, { blank: "— เลือกสกิล —" });
     filtersBuilt = true;
   }
   // แท็กเปลี่ยนได้เรื่อยๆ ตามที่ผู้ใช้พิมพ์ จึงเติมใหม่ทุกรอบ (คงค่าที่เลือกไว้)
@@ -537,9 +544,10 @@ const imageFiles = (list) => [...list].filter((f) => f.type.startsWith("image/")
 
 /* ---------- ต่อสายเหตุการณ์ ---------- */
 function wire() {
-  for (const id of ["f-map", "f-side", "f-site", "f-agent", "f-ability", "f-tag"]) {
+  for (const id of ["f-map", "f-side", "f-site", "f-ability", "f-tag"]) {
     $(id).addEventListener("change", render);
   }
+  $("f-agent").addEventListener("change", () => { scopeLibraryAbility(); render(); });
   $("search").addEventListener("input", render);
   for (const id of ["f-fav", "btn-unpinned"]) {
     $(id).addEventListener("click", () => { $(id).classList.toggle("on"); render(); });
@@ -549,6 +557,7 @@ function wire() {
     $("search").value = "";
     $("f-fav").classList.remove("on");
     $("btn-unpinned").classList.remove("on");
+    scopeLibraryAbility();   // ตัวละครกลับเป็นทั้งหมด ช่องสกิลต้องกลับมาครบด้วย
     render();
   });
 
