@@ -379,12 +379,12 @@ class _Sides:
         self.here_trash, self.there_trash = trashed(here), trashed(there)
         self._trash_hash: dict[Path, str] = {}
 
-    def in_trash(self, trash: dict[str, list[Path]], rel: str, digest: str) -> bool | None:
-        """ถังมีสำเนาของ ``rel`` ที่เนื้อตรงกับ ``digest`` ไหม — ไม่มีสำเนาชื่อนี้เลยคืน None.
+    def in_trash(self, trash: dict[str, list[Path]], names, digest: str) -> bool | None:
+        """ถังมีสำเนาใต้ชื่อใดชื่อหนึ่งใน ``names`` ที่เนื้อตรงกับ ``digest`` ไหม — ไม่มีสำเนาเลยคืน None.
 
         แฮชเฉพาะสำเนาที่ต้องเทียบจริง (ถังอาจใหญ่ แต่ชื่อที่ต้องดูมีไม่กี่ใบ)
         """
-        copies = trash.get(rel)
+        copies = [path for name in names for path in trash.get(name, [])]
         if not copies:
             return None
         for path in copies:
@@ -415,6 +415,12 @@ def _chain(entries: list[dict], rel: str) -> list[list]:
             out.append([entry["old"], entry["new"], entry["at"]])
             current = entry["new"]
     return out
+
+
+def _trail(entries: list[dict], rel: str) -> list[str]:
+    """ทุกชื่อที่ ``rel`` เคยใช้ตามบันทึก — ``library.remove`` เก็บสำเนาในถังใต้ชื่อ **ตอนที่ลบ**
+    (เปลี่ยนชื่อ/ย้ายก่อนลบ สำเนาจะไม่ได้อยู่ใต้ชื่อเดิม)."""
+    return list(dict.fromkeys([rel, *(entry[0] for entry in _chain(entries, rel))]))
 
 
 def _match_by_content(s: _Sides, out: dict) -> tuple[list[tuple[str, str]], set, set]:
@@ -477,7 +483,7 @@ def _order_renames(wanted: list[tuple[str, str]], names) -> tuple[list, list]:
 
 def _their_delete(s: _Sides, out: dict, ids, here_after: dict, rel: str) -> None:
     """บันทึกของ THERE ลบชื่อ ``rel`` — ลบของที่นี่ก็ต่อเมื่อเป็นรูปเดียวกันจริง."""
-    same = s.in_trash(s.there_trash, rel, s.here_hash[rel])
+    same = s.in_trash(s.there_trash, _trail(s.there_own, rel), s.here_hash[rel])
     if same is False:
         out["skipped"].append({"rel": rel, "why": "อีกเครื่องลบรูปชื่อนี้ แต่เป็นคนละรูปกับที่นี่ — เก็บไว้"})
         return
@@ -496,15 +502,21 @@ def _here_only(s: _Sides, out: dict, ids, here_after: dict, used: set) -> None:
         if rel in s.there_img or rel in used or rel not in here_after:
             continue
         touched, final = journal.fate(s.there_own, rel)
-        if touched and final is None:
-            # ดูบันทึกการลบก่อนเช็กว่าเนื้อยังอยู่ที่นั่นไหม: ลบใบซ้ำทิ้ง เนื้อก็ยังอยู่ใต้อีกชื่อ
+        # เนื้อเดียวกันที่อีกเครื่องยังมีอยู่ใต้ชื่ออื่น
+        elsewhere = s.there_by_hash.get(s.here_hash[rel], [])
+        # ลบตามได้เมื่อเนื้อนี้ไม่เหลือที่นั่นแล้ว หรือเหลือใต้ชื่อที่ทั้งสองฝั่งมีตรงกัน (ลบใบซ้ำทิ้ง
+        # เนื้อยังอยู่ที่นี่ใต้อีกชื่อ ไม่มีอะไรหาย)
+        if touched and final is None and (
+                not elsewhere or any(name in s.identical for name in elsewhere)):
             _their_delete(s, out, ids, here_after, rel)
-        elif s.here_hash[rel] in s.there_by_hash:
-            continue                          # เนื้อเดียวกันยังอยู่ที่นั่นใต้อีกชื่อ ไม่แตะ
+        elif elsewhere:
+            # เนื้อนี้เหลืออยู่ที่นั่นแค่ใต้ชื่อที่ที่นี่ไม่มี (เช่นก๊อปนอกโปรแกรมแล้วลบตัวเดิม) → ไม่แตะ
+            # ใบของที่นี่ (หมุด/แท็กอยู่กับมัน) ชื่อที่นั่นจะไปขึ้นเป็นรายการ new-dup ให้ถามเอง
+            continue
         elif touched:
             out["skipped"].append({"rel": rel, "why": f"อีกเครื่องเปลี่ยนชื่อเป็น {final} "
                                                      "แต่ไม่เจอรูปเดียวกันที่นั่น — ไม่ได้ทำอะไร"})
-        elif s.in_trash(s.there_trash, rel, s.here_hash[rel]):
+        elif s.in_trash(s.there_trash, [rel], s.here_hash[rel]):
             out["ask"].append({"id": next(ids), "kind": "there-trashed", "rel": rel,
                                "default": False,
                                "detail": "อีกเครื่องเคยลบใบนี้ (ก่อนมีบันทึก) — ติ๊กเพื่อลบที่นี่ด้วย"})
@@ -538,7 +550,7 @@ def _there_new(s: _Sides, out: dict, ids, here_after: dict, done: set) -> None:
             continue
         touched, final = journal.fate(s.here_own, rel)
         if (touched and final is None
-                and s.in_trash(s.here_trash, rel, s.there_hash[rel]) is not False):
+                and s.in_trash(s.here_trash, _trail(s.here_own, rel), s.there_hash[rel]) is not False):
             # ที่นี่ลบรูปนี้ไปแล้ว (สำเนาในถังตรงกัน หรือไม่มีสำเนาให้เทียบ) · ถ้าสำเนาในถังเป็น
             # คนละรูป แปลว่าอีกเครื่องแคปใหม่ชื่อเดิม ถือเป็นรูปใหม่ไหลต่อไปข้างล่าง
             out["skipped"].append({"rel": rel, "why": "ลบไปแล้วที่นี่"})
@@ -549,7 +561,7 @@ def _there_new(s: _Sides, out: dict, ids, here_after: dict, done: set) -> None:
             out["ask"].append({"id": next(ids), "kind": "new-dup", "rel": rel, "default": False,
                                "detail": f"รูปเหมือนกับ {shown[twin]} ที่มีอยู่แล้วเป๊ะ "
                                          "(น่าจะเปลี่ยนชื่อด้วยมือ) — ติ๊กเพื่อก๊อปมาอีกใบ"})
-        elif s.in_trash(s.here_trash, rel, s.there_hash[rel]):
+        elif s.in_trash(s.here_trash, [rel], s.there_hash[rel]):
             out["ask"].append({"id": next(ids), "kind": "new-trashed", "rel": rel,
                                "default": False,
                                "detail": "เคยลบใบนี้ที่นี่ (ก่อนมีบันทึก) — ติ๊กเพื่อเอากลับมา"})
@@ -897,6 +909,7 @@ def apply(plan_: dict, choices: dict) -> dict:
     อีกฝั่ง], "keep_both": [id ของรูปที่ขัดกันที่เก็บไว้ทั้งคู่], "machine": "here"|"there",
     "config": bool}``.
 
+    id เดียวอยู่ทั้งใน ``take_there`` และ ``keep_both`` = เก็บทั้งคู่ (ทางที่ไม่มีอะไรออกจากคลัง)
     รูปที่ขัดกันซึ่งไม่อยู่ในสองรายการนั้น = เก็บของที่นี่อย่างเดียว (หน้าเว็บเลือกตาม ``default``
     ของแต่ละรายการไว้ให้ก่อน = ฝั่งที่ไฟล์ใหม่กว่า)
     ตรวจก่อนว่าทั้งสองฝั่งไม่เปลี่ยนไปจากตอนดูสรุป (มีคนแก้คลังระหว่างนั้น) ถ้าเปลี่ยนให้ดูสรุปใหม่
