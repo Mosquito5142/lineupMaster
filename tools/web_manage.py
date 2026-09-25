@@ -609,8 +609,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(store.state())
             return
         if route == "/api/merge/candidates":
-            with store.lock:
-                self._json(store.merge_candidates())
+            # สแกนโฟลเดอร์ในเครื่องนาน และไม่แตะข้อมูลของ Store — ไม่ถือล็อก หน้าเว็บจะได้ไม่ค้าง
+            self._json(store.merge_candidates())
             return
         if route == "/api/map-extras":
             map_ = (query.get("map") or [""])[0]
