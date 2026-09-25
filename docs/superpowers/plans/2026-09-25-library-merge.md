@@ -1383,7 +1383,7 @@ from lineupmaster import merge as merge_mod  # noqa: E402
 - [ ] **Step 8: รันให้เห็นว่าผ่าน**
 
 Run: คำสั่งเทสต์ Python ใน Global Constraints
-Expected: `Ran 25 tests` แล้วตามด้วย `OK`
+Expected: `Ran 63 tests` แล้วตามด้วย `OK` (60 เดิม + 3 ใหม่)
 
 - [ ] **Step 9: Commit**
 
@@ -1429,6 +1429,7 @@ git commit -m "หน้าเว็บ: API รวมคลังจากโ�
   <section id="merge-pick">
     <p class="hint">เลือกโฟลเดอร์ LineupMaster อีกชุด (โฟลเดอร์เก่าของเครื่องนี้ หรือชุดที่โหลดจาก Drive)
       — รูปและหมุดจากโฟลเดอร์นั้นจะถูกรวมเข้าที่นี่ โดย<b>ไม่แก้อะไรในโฟลเดอร์นั้นเลย</b></p>
+    <p class="hint warn-line"><b>ปิดโปรแกรมหลัก (ตัวที่ใช้ตอนเล่น) ก่อนกดรวม</b> — ถ้าเปิดค้างไว้ ตอนปิดมันจะเขียนแมพล่าสุด/สถิติใช้บ่อยทับของที่รวมมา</p>
     <ul id="merge-found" class="merge-found"></ul>
     <label class="wide">หรือวาง path ของโฟลเดอร์เอง
       <input id="merge-path" type="text" placeholder="C:\Users\...\LineupMaster" autocomplete="off"></label>
@@ -1446,7 +1447,7 @@ git commit -m "หน้าเว็บ: API รวมคลังจากโ�
       <ul id="merge-ask" class="merge-list"></ul>
     </div>
     <div id="merge-conflicts-box" hidden>
-      <h3>ขัดกัน — ไม่ติ๊ก = เก็บของที่นี่ · ติ๊ก = ใช้ของโฟลเดอร์นั้น</h3>
+      <h3>ขัดกัน — รูป: ค่าเริ่มต้นเอาอันที่แก้ล่าสุด (เปลี่ยนได้) · หมุด/สกิล/ป้าย: ไม่ติ๊ก = เก็บของที่นี่ · ติ๊ก = ใช้ของโฟลเดอร์นั้น</h3>
       <ul id="merge-conflicts" class="merge-list"></ul>
     </div>
     <label class="wide">ค่าเฉพาะเครื่อง (กรอบแคปชื่อโซน · โฟลเดอร์ภาพแคป · แมพล่าสุด)
@@ -1580,12 +1581,24 @@ function renderMergePlan(plan) {
     `<span><code>${escapeHtml(item.rel)}</code><br><small>${escapeHtml(item.detail)}</small></span></label>`)));
   $("merge-ask-box").hidden = !plan.ask.length;
 
+  // รูปชื่อซ้ำแต่เนื้อต่าง ผู้ใช้เลือกแล้วว่าตั้งต้นที่ "เอาอันที่แก้ล่าสุด" (เซิร์ฟเวอร์ตั้ง item.default
+  // ตามเวลาแก้ไฟล์) แต่ยังเลือกเก็บทั้งคู่รายใบได้ · ที่ขัดกันอย่างอื่นเป็นแค่ค่าเดียว ใช้ติ๊กถูกพอ
   const conflicts = $("merge-conflicts");
-  conflicts.replaceChildren(...plan.conflicts.map((item) => mergeLine(
-    `<label><input type="checkbox" value="${item.id}">` +
-    `<span>${escapeHtml(MERGE_KIND[item.kind] || item.kind)} · <code>${escapeHtml(item.key)}</code><br>` +
-    `<small>ที่นี่: ${escapeHtml(mergeValue(item.kind, item.here))} · ` +
-    `โฟลเดอร์นั้น: ${escapeHtml(mergeValue(item.kind, item.there))}</small></span></label>`)));
+  conflicts.replaceChildren(...plan.conflicts.map((item) => {
+    const what = `${escapeHtml(MERGE_KIND[item.kind] || item.kind)} · <code>${escapeHtml(item.key)}</code><br>` +
+      `<small>ที่นี่: ${escapeHtml(mergeValue(item.kind, item.here))} · ` +
+      `โฟลเดอร์นั้น: ${escapeHtml(mergeValue(item.kind, item.there))}</small>`;
+    if (item.kind !== "image") {
+      return mergeLine(`<label><input type="checkbox" value="${item.id}"><span>${what}</span></label>`);
+    }
+    const pick = (value, label) =>
+      `<option value="${value}"${(item.default || "here") === value ? " selected" : ""}>${label}</option>`;
+    const newer = (side) => (item.newer === side ? " — ใหม่กว่า" : "");
+    return mergeLine(`<span>${what}</span><select data-conflict="${item.id}">` +
+      pick("here", `เก็บของที่นี่${newer("here")}`) +
+      pick("there", `ใช้ของโฟลเดอร์นั้น (ของที่นี่เข้า .trash)${newer("there")}`) +
+      pick("both", "เก็บทั้งคู่ (ของโฟลเดอร์นั้นได้ชื่อใหม่)") + "</select>");
+  }));
   $("merge-conflicts-box").hidden = !plan.conflicts.length;
 
   const m = plan.machine;
@@ -1611,9 +1624,12 @@ function renderMergePlan(plan) {
 
 async function applyMerge() {
   const ticked = (id) => [...document.querySelectorAll(`#${id} input:checked`)].map((box) => Number(box.value));
+  const images = (value) => [...document.querySelectorAll("#merge-conflicts select[data-conflict]")]
+    .filter((select) => select.value === value).map((select) => Number(select.dataset.conflict));
   const choices = {
     ask: ticked("merge-ask"),
-    take_there: ticked("merge-conflicts"),
+    take_there: [...ticked("merge-conflicts"), ...images("there")],
+    keep_both: images("both"),
     machine: $("merge-machine").value,
     config: $("merge-config").checked,
   };
@@ -1623,11 +1639,15 @@ async function applyMerge() {
     const rows = [
       [report.copied, "ก๊อปรูปใหม่มา"], [report.renamed, "เปลี่ยนชื่อ/ย้ายตามอีกเครื่อง"],
       [report.removed, "ย้ายเข้า .trash"], [report.replaced, "แทนรูปด้วยของโฟลเดอร์นั้น"],
+      [report.kept_both, "เก็บทั้งคู่ (ของโฟลเดอร์นั้นได้ชื่อใหม่)"],
       [report.positions, "หมุดใหม่"], [report.callouts, "ป้ายชื่อโซนใหม่"],
     ].filter(([n]) => n > 0);
+    const errors = report.errors || [];
     $("merge-report").replaceChildren(
-      mergeLine("<b>รวมเสร็จแล้ว</b>"),
+      mergeLine(errors.length ? "<b>รวมเสร็จ แต่มีบางรายการทำไม่สำเร็จ</b>" : "<b>รวมเสร็จแล้ว</b>"),
       ...rows.map(([n, label]) => mergeLine(`${escapeHtml(label)} <b>${n}</b>`)),
+      // ที่พังจะไม่ถูกจดว่าทำแล้ว — แก้สาเหตุ (เช่นปิดโปรแกรมที่เปิดไฟล์ค้าง) แล้วกดรวมใหม่ได้เลย
+      ...errors.map((line) => mergeLine(`<small class="merge-error">ทำไม่สำเร็จ: ${escapeHtml(line)}</small>`)),
       mergeLine(`<small>ของเดิมที่ถูกแทน/ลบ และ json ก่อนรวม เก็บไว้ที่ <code>${escapeHtml(report.trash)}</code></small>`),
     );
     mergeStage("done");
@@ -1669,6 +1689,9 @@ dialog.merge h3 { margin: 16px 0 6px; font-size: 12.5px; font-weight: 600; }
 dialog label.check { flex-direction: row; align-items: center; gap: 7px; margin-top: 12px; color: var(--ink); }
 dialog.merge details { margin-top: 14px; font-size: 12px; }
 dialog.merge details summary { cursor: pointer; color: var(--ink-2); }
+dialog.merge .warn-line { margin-top: 8px; padding-left: 8px; box-shadow: inset 3px 0 0 var(--target); }
+.merge-list li select { display: block; margin-top: 6px; width: 100%; }
+.merge-error { color: var(--stop); }
 ```
 
 - [ ] **Step 6: เช็คไวยากรณ์ + เทสต์เดิม**
@@ -1719,7 +1742,12 @@ Google Drive มาลง — **อย่าแตกโฟลเดอร์ใ
 
 - ใบที่ลบ/เปลี่ยนชื่อ/ย้ายผ่านโปรแกรม ถูกจดไว้ใน `changes.json` — รวมแล้ว**ไม่ฟื้นของที่ตั้งใจลบ**
   และเปลี่ยนชื่อตามอีกเครื่องให้เอง (ที่ลบด้วยมือใน Explorer จะขึ้นเป็นรายการ "ไม่แน่ใจ" ให้ติ๊กเอง)
-- ใบเดียวกันแต่หมุด/สกิล/รูปไม่ตรงกัน = "ขัดกัน" ค่าเริ่มต้น**เก็บของโฟลเดอร์ที่เปิดอยู่**
+- โปรแกรมจำรูปจาก**เนื้อไฟล์** ไม่ใช่แค่ชื่อ — เปลี่ยนชื่อไปคนละแบบก็ยังรู้ว่าเป็นใบเดียวกัน
+- รูปชื่อซ้ำแต่เนื้อต่างกัน = "ขัดกัน" ค่าเริ่มต้น**เอาอันที่แก้ล่าสุด** (ดูจากเวลาแก้ไฟล์ — อันเก่าเข้า
+  `.trash`) เปลี่ยนเป็น "เก็บทั้งคู่" รายใบได้ในหน้าสรุป · หมุด/สกิล/ป้ายชื่อโซนที่ไม่ตรงกัน
+  ค่าเริ่มต้น**เก็บของโฟลเดอร์ที่เปิดอยู่** (ไม่มีเวลาแก้ไขรายรายการให้เทียบ)
+- **ปิดโปรแกรมหลักก่อนกดรวม** ไม่งั้นตอนปิดมันจะเขียนแมพล่าสุด/สถิติใช้บ่อยทับของที่รวมมา
+- มีรายการไหนทำไม่สำเร็จ (เช่นไฟล์ถูกเปิดค้างอยู่) หน้าสรุปจะบอก — แก้สาเหตุแล้วกดรวมใหม่ได้เลย
 - กรอบแคปชื่อโซน (`capture.json`) และแมพล่าสุดเป็นของแต่ละเครื่อง — เอาจากโฟลเดอร์ที่เคยเปิดบน
   เครื่องนี้ให้เอง (เปลี่ยนได้ในหน้าสรุป) · `config.yaml` ใช้ของโปรแกรมใหม่ เว้นแต่ติ๊กใช้ของเก่า
 - **ไม่ลบอะไรถาวร** ของที่ถูกแทน/ลบ และ json ก่อนรวม อยู่ใน `.trash/<เวลา>-merge/` ย้อนกลับเองได้
