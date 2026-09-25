@@ -34,6 +34,7 @@ from . import callouts as callout_mod
 from . import meta as meta_mod
 from . import positions as pos_mod
 from .index import Lineup
+from .paths import machine_name
 from .positions import Pin
 
 SIDES = ("attack", "defense")
@@ -586,7 +587,8 @@ class Browser:
             self.state_path.write_text(
                 json.dumps(
                     {"map": self.map, "side": self.side, "uses": self.uses,
-                     "f_agent": self.f_agent, "f_ability": self.f_ability},
+                     "f_agent": self.f_agent, "f_ability": self.f_ability,
+                     "machine": machine_name()},
                     ensure_ascii=False,
                 ),
                 encoding="utf-8",
