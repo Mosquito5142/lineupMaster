@@ -743,3 +743,33 @@ p.merge-error { margin: 12px 0 0; font-size: 12px; }
 .merge-thumbs figure { margin: 0; display: grid; gap: 2px; }
 .merge-thumbs img { max-height: 90px; max-width: 160px; object-fit: contain; background: var(--sheet); }
 .merge-thumbs figcaption { font-size: 11px; color: var(--ink-2); }
+
+/* ================= แท็บตั้งค่า (settings.js) ================= */
+#tab-settings { overflow: auto; min-height: 0; }
+.set-page { max-width: 760px; margin: 0 auto; padding: 16px var(--pad) 40px; }
+.set-live {
+  margin: 12px 0 4px; padding: 9px 12px; background: var(--sheet-2);
+  box-shadow: inset 3px 0 0 var(--act); font-size: 12.5px;
+}
+.set-live.idle { color: var(--ink-2); box-shadow: inset 3px 0 0 var(--edge); }
+.set-result { font-weight: 600; }
+.set-result.ok { color: var(--stand-ink); }
+.set-result.warn { color: #8a5a00; }
+.set-result.err { color: var(--stop); }
+.set-group { margin-top: 18px; }
+.set-group h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+.set-row {
+  display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center;
+  padding: 8px 10px; background: var(--sheet); margin-bottom: 4px;
+}
+.set-row.changed { box-shadow: inset 3px 0 0 var(--target); }
+.set-label { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+.set-label input[type="number"] { width: 82px; flex: none; }
+.set-label input[type="checkbox"] { margin-top: 3px; flex: none; }
+.set-label span { display: grid; gap: 2px; }
+.set-label small { font-size: 11px; color: var(--ink-2); }
+.set-tag { font-size: 10.5px; color: var(--ink-2); white-space: nowrap; }
+.set-tag.restart { color: #8a5a00; }
+@media (max-width: 640px) {
+  .set-row { grid-template-columns: 1fr; }
+}

@@ -43,6 +43,7 @@ from lineupmaster import library as lib  # noqa: E402
 from lineupmaster import merge as merge_mod  # noqa: E402
 from lineupmaster import meta as meta_mod  # noqa: E402
 from lineupmaster import positions as pos_mod  # noqa: E402
+from lineupmaster import settings as settings_mod  # noqa: E402
 from lineupmaster.browser import ABILITY_TH, AGENT_ABILITIES, AGENT_TH, SIDES, SITES  # noqa: E402
 from lineupmaster.index import IMAGE_SUFFIXES  # noqa: E402
 from lineupmaster.paths import ASSETS, MAPS, ROOT  # noqa: E402
@@ -316,6 +317,30 @@ class Store:
             raise ValueError(f"ไม่เจอโฟลเดอร์นี้: {raw}")
         self.merge_plan = merge_mod.plan(ROOT, folder)
         return self.merge_plan
+
+    # -- หน้าตั้งค่า (settings.json ทับ config.yaml — ดู lineupmaster/settings.py) --------
+    def settings_state(self) -> dict:
+        return settings_mod.state(ROOT)
+
+    def settings_set(self, key: str | None, value) -> dict:
+        settings_mod.set_value(ROOT, str(key or ""), value)
+        self.cfg = config_mod.load(ROOT)
+        return self.settings_state()
+
+    def settings_reset(self, key: str | None) -> dict:
+        settings_mod.reset(ROOT, str(key or ""))
+        self.cfg = config_mod.load(ROOT)
+        return self.settings_state()
+
+    def settings_live(self) -> dict:
+        """ผลรอบล่าสุดของโหมดตามตัวที่โปรแกรมหลักเขียนไว้ (app.App._auto_report) + อายุเป็นวินาที."""
+        try:
+            data = json.loads((ROOT / ".cache" / "auto-live.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {"live": None, "age": None}
+        if not isinstance(data, dict):
+            return {"live": None, "age": None}
+        return {"live": data, "age": round(time.time() - float(data.get("at") or 0), 1)}
 
     def merge_apply(self, choices: dict) -> dict:
         """รวมตามแผนที่ดูสรุปไว้ล่าสุด — ใช้ได้ครั้งเดียว (ล้มเพราะคลังเปลี่ยนก็ต้องดูสรุปใหม่)."""
@@ -628,6 +653,13 @@ class Handler(BaseHTTPRequestHandler):
             with store.lock:
                 self._json(store.state())
             return
+        if route == "/api/settings":
+            with store.lock:
+                self._json(store.settings_state())
+            return
+        if route == "/api/settings/live":
+            self._json(store.settings_live())     # อ่านไฟล์เล็กไฟล์เดียว ไม่แตะ Store — ไม่ถือล็อก
+            return
         if route == "/api/merge/candidates":
             # สแกนโฟลเดอร์ในเครื่องนาน และไม่แตะข้อมูลของ Store — ไม่ถือล็อก หน้าเว็บจะได้ไม่ค้าง
             self._json(store.merge_candidates())
@@ -743,6 +775,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json(self.source.take(store, body))
         elif route == "/api/source/skip":
             self._json(self.source.skip(body.get("uid") or body.get("id")))
+        elif route == "/api/settings/set":
+            self._json(store.settings_set(body.get("key"), body.get("value")))
+        elif route == "/api/settings/reset":
+            self._json(store.settings_reset(body.get("key")))
         elif route == "/api/merge/preview":
             self._json(store.merge_preview(body.get("path")))
         elif route == "/api/merge/apply":

@@ -40,7 +40,7 @@ from .index import IMAGE_SUFFIXES
 
 DATA_FILES = ("positions.json", "meta.json", "callouts.json", "browse.json", "last-view.json",
               journal.FILE)
-MACHINE_FILES = ("capture.json", "compose.json")      # ค่าที่ผูกกับจอ/โฟลเดอร์ของเครื่องนั้น
+MACHINE_FILES = ("capture.json", "compose.json", "settings.json")      # ค่าที่ผูกกับจอ/โฟลเดอร์ของเครื่องนั้น
 MACHINE_VIEW_KEYS = ("map", "side", "f_agent", "machine")   # ส่วนของ last-view.json ที่เป็นของเครื่อง
 CONFIG_FILES = ("config.yaml", "aliases.yaml")
 # ไม่นับ last-view.json ในลายนิ้วมือ: โปรแกรมหลักเขียนไฟล์นี้ทุกครั้งที่กดปุ่ม ถ้าเปิดค้างไว้

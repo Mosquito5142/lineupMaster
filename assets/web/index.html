@@ -25,6 +25,7 @@
 <nav class="tabs">
   <button class="tab on" type="button" data-tab="library">คลังของเรา</button>
   <button class="tab" type="button" data-tab="source">หาไลน์อัพจากเว็บ</button>
+  <button class="tab" type="button" data-tab="settings">ตั้งค่า</button>
 </nav>
 
 <div id="tab-library">
@@ -311,6 +312,16 @@
   </div>
 </div><!-- /tab-source -->
 
+<!-- แท็บตั้งค่า (settings.js) — ค่าเก็บใน settings.json ทับ config.yaml -->
+<div id="tab-settings" hidden>
+  <div class="set-page">
+    <p class="hint">ปรับแล้วบันทึกเลย · ค่าที่ติดป้าย <b>มีผลทันที</b> โปรแกรมหลักใช้ค่าใหม่เองระหว่างเปิดอยู่
+      ส่วน <b>เปิดโปรแกรมใหม่</b> ต้องปิดแล้วเปิดโปรแกรมหลักอีกรอบ · ↺ = กลับไปใช้ค่าเริ่มต้น</p>
+    <p id="settings-live" class="set-live idle"></p>
+    <div id="settings-form"></div>
+  </div>
+</div><!-- /tab-settings -->
+
 <!-- แถบสั่งเหมาหลายใบ -->
 <div id="bulkbar" class="bulkbar" hidden>
   <strong id="bulk-count"></strong>
@@ -402,5 +413,6 @@
 <script src="app.js"></script>
 <script src="source.js"></script>
 <script src="merge.js"></script>
+<script src="settings.js"></script>
 </body>
 </html>

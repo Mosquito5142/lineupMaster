@@ -107,7 +107,7 @@ def set_point(data: dict, map_: str, slug: str, point: Point) -> None:
 MATCH_CUTOFF = 0.6
 # อันดับ 1 ต้องคล้ายกว่าอันดับ 2 อย่างน้อยเท่านี้ ไม่งั้นถือว่า "เสมอกัน" ไม่มั่นใจพอจะเลือก
 # (ดูเหตุผลละเอียดที่ match() — คู่ชื่อแบบ "Main A"/"Main B" เจอปัญหานี้จริงจากผู้ใช้)
-_MARGIN = 0.05
+MATCH_MARGIN = 0.05
 
 
 def _candidates(data: dict, map_: str) -> dict[str, Point]:
@@ -155,23 +155,28 @@ def _rank(lower_to_label: dict[str, str], text: str) -> list[tuple[float, str]]:
     )
 
 
-def _accept(ranked: list[tuple[float, str]], cutoff: float) -> tuple[float, str] | None:
+def _accept(
+    ranked: list[tuple[float, str]], cutoff: float, margin: float = MATCH_MARGIN
+) -> tuple[float, str] | None:
     """รับผลจาก _rank มาตัดสินว่ามั่นใจพอจะตอบไหม — ไม่มั่นใจคืน ``None`` ไม่เดามั่ว.
 
     **เช็คด้วยว่าอันดับ 1 นำอันดับ 2 พอสมควร ไม่ใช่แค่คะแนนถึงเกณฑ์** — ชื่อคู่ที่ต่างกันแค่
     ตัวอักษรฝั่งเดียว (เช่น "A Main" กับ "B Main") ได้คะแนนใกล้กันมากโดยธรรมชาติ ถ้าเลือกจาก
     คะแนนสูงสุดอย่างเดียวจะจับคู่ไปผิดฝั่งได้เงียบๆ โดยไม่รู้ตัว (เจอบั๊กนี้จริงจากผู้ใช้ — แคป
-    "A Main" แต่ได้ "Main B") คะแนนอันดับ 1/2 ใกล้กันเกิน ``_MARGIN`` = **ไม่ตอบ** ดีกว่าเดามั่ว
+    "A Main" แต่ได้ "Main B") คะแนนอันดับ 1/2 ใกล้กันเกิน ``margin`` = **ไม่ตอบ** ดีกว่าเดามั่ว
+
+    ``cutoff``/``margin`` ปรับได้จากหน้าตั้งค่า (``match.cutoff``/``match.margin`` ใน config)
     """
     if not ranked or ranked[0][0] < cutoff:
         return None
-    if len(ranked) > 1 and ranked[0][0] - ranked[1][0] < _MARGIN:
+    if len(ranked) > 1 and ranked[0][0] - ranked[1][0] < margin:
         return None
     return ranked[0]
 
 
 def best_match(
-    data: dict, map_: str, texts: list[str], cutoff: float = MATCH_CUTOFF
+    data: dict, map_: str, texts: list[str], cutoff: float = MATCH_CUTOFF,
+    margin: float = MATCH_MARGIN,
 ) -> tuple[str, Point] | None:
     """เลือกชื่อโซนที่ตรงที่สุด จาก **หลายบรรทัด** ที่ OCR อ่านมาในรูปเดียว.
 
@@ -189,7 +194,7 @@ def best_match(
 
     best: tuple[float, str] | None = None
     for text in texts:
-        hit = _accept(_rank(lower_to_label, text), cutoff)
+        hit = _accept(_rank(lower_to_label, text), cutoff, margin)
         if hit is not None and (best is None or hit[0] > best[0]):
             best = hit
     if best is None:

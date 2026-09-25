@@ -1019,6 +1019,7 @@ function wireSource() {
       const which = button.dataset.tab;
       $("tab-library").hidden = which !== "library";
       $("tab-source").hidden = which !== "source";
+      $("tab-settings").hidden = which !== "settings";
       if (which === "source" && !SRC.loaded) {
         let remembered = "1";
         try { remembered = localStorage.getItem("lm-source-grid") ?? "1"; } catch { /* โหมดเริ่มต้น */ }
