@@ -1,12 +1,17 @@
 """ลงมือตามผลตรวจรูปทีละใบ (``.cache/<agent>-review/out-*.json``) — ปักหมุด ตั้งชื่อ ย้ายโฟลเดอร์ ตัดใบ.
 
+ขั้นตอนเต็ม (เตรียม → ดูรูป → ตรวจผล → ทดลอง → แก้จริง) อยู่ที่ docs/review-new-agent.md
+
 ผลตรวจมาจาก Claude ที่เปิดดูรูปไลน์อัพทีละใบ (ดู ``.cache/<agent>-review/BRIEF.md``) แต่ละใบบอก:
 จุดยืน/จุดตกเป็นพิกัดบนแผนที่ของโปรแกรม, ฝั่ง/จุดที่ถูก, สกิล, ชื่อใหม่, เก็บหรือตัด
 
 ทุกอย่างวิ่งผ่าน ``lineupmaster.library`` (move/rename/remove) — หมุด/แท็กตามไปเอง, จดลง changes.json
 (รวมคลังข้ามเครื่องแล้วไม่ฟื้น), ใบที่ตัดเข้า .trash กู้คืนได้ · json เดิมสำรองไว้ใน .trash/<เวลา>-<agent>-review/_json/
 
-    python tools/apply_kayo_review.py --root dist/LineupMaster [--agent kayo] [--dry-run]
+    python tools/apply_review.py --root dist/LineupMaster --agent kayo [--dry-run]
+
+ก่อนแก้จะตรวจผลให้ก่อน (ครบทุกใบใน input · พิกัด 0–1 · ใบที่ถูกอ้างว่า "ซ้ำ" ต้องถูกเก็บ) ไม่ผ่าน = ไม่แตะอะไร
+แก้เสร็จจดใบที่ตรวจแล้วลง ``done.json`` — review_prepare.py รอบหน้าจะข้ามใบพวกนี้
 
 จบแล้วเขียนหน้าสรุป ``<root>/<agent>-review.html`` (เปิดด้วยเบราว์เซอร์ รูปอ้างอิงแบบ path สัมพัทธ์)
 """
@@ -23,15 +28,18 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+REPO = Path(__file__).resolve().parents[1]
+sys.path[:0] = [str(REPO / "src"), str(REPO / "tools")]
 
+import lineup_sources as source_mod  # noqa: E402
 from lineupmaster import library as lib  # noqa: E402
+from lineupmaster.browser import ABILITY_TH  # noqa: E402
 from lineupmaster import meta as meta_mod  # noqa: E402
 from lineupmaster import positions as pos_mod  # noqa: E402
 
 SIDES = ("attack", "defense")
 SITES = ("A", "B", "C")
-ABILITIES = {"knife": "มีด", "molly": "ระเบิด", "flash": "แฟลช", "ult": "อัลติ"}
+ABILITIES = ABILITY_TH           # แท็กสกิล -> ชื่อไทย (ใช้ท้ายชื่อไฟล์และในหน้าสรุป)
 
 
 def _running() -> bool:
@@ -49,18 +57,41 @@ def _point(value) -> list[float] | None:
     return None
 
 
-# สกิลที่เว็บต้นทางระบุไว้ — เชื่อกว่าที่ดูจากรูป (สกิลของ KAY/O สีม่วงเหมือนกันหมด ดูจากเอฟเฟกต์แยกยาก)
-WEB_ABILITY = {"zero": "knife", "frag": "molly", "flash": "flash", "null": "ult"}
+def input_rels(folder: Path) -> set[str]:
+    return {item["rel"] for path in folder.glob("input-*.json")
+            for item in json.loads(path.read_text(encoding="utf-8")).get("images", [])}
 
 
 def web_abilities(folder: Path) -> dict[str, str]:
+    """สกิลที่เว็บต้นทางระบุไว้ — เชื่อกว่าที่ดูจากรูป (เอฟเฟกต์ของตัวเดียวกันมักสีเดียวกันหมด แยกพลาดง่าย)."""
     out: dict[str, str] = {}
     for path in folder.glob("input-*.json"):
         for item in json.loads(path.read_text(encoding="utf-8")).get("images", []):
-            name = (item.get("web_ability") or "").lower()
-            tag = next((t for word, t in WEB_ABILITY.items() if word in name), None)
+            tag = source_mod.ability_tag(item.get("web_ability") or "")
             if tag:
                 out[item["rel"]] = tag
+    return out
+
+
+def problems(entries: list[dict], wanted: set[str]) -> list[str]:
+    """ตรวจผลก่อนลงมือ — คืนรายการปัญหา (ว่าง = ผ่าน)."""
+    out: list[str] = []
+    rels = [e["rel"] for e in entries]
+    by_rel = {e["rel"]: e for e in entries}
+    missing, extra = wanted - set(rels), set(rels) - wanted
+    if missing:
+        out.append(f"ยังไม่ได้ตรวจ {len(missing)} ใบ เช่น {sorted(missing)[:3]}")
+    if extra:
+        out.append(f"มีผลของใบที่ไม่อยู่ใน input {len(extra)} ใบ เช่น {sorted(extra)[:3]}")
+    if len(rels) != len(set(rels)):
+        out.append("มีผลซ้ำใบเดียวกันหลายครั้ง")
+    for e in entries:
+        for key in ("stand_xy", "target_xy"):
+            if e.get(key) is not None and _point(e.get(key)) is None:
+                out.append(f"{e['rel']}: {key} ไม่ใช่พิกัด 0–1 ({e.get(key)})")
+        dup = e.get("duplicate_of")
+        if e.get("verdict") == "drop" and dup and by_rel.get(dup, {}).get("verdict") != "keep":
+            out.append(f"{e['rel']}: ตัดเพราะซ้ำกับ {dup} แต่ใบนั้นไม่ได้ถูกเก็บ (จะหายทั้งคู่)")
     return out
 
 
@@ -85,6 +116,12 @@ def main() -> int:
     if not entries:
         print(f"ไม่เจอผลตรวจใน {review_dir}")
         return 1
+    issues = problems(entries, input_rels(review_dir))
+    if issues:
+        print("ผลตรวจยังไม่พร้อม — ไม่ได้แก้อะไร:")
+        for line in issues:
+            print("  -", line)
+        return 3
     if not args.dry_run and _running():
         print("LineupMaster.exe เปิดอยู่ — ปิดโปรแกรมหลัก/หน้าจัดการคลังก่อน (มันถือหมุดไว้ในหน่วยความจำ จะเขียนทับ)")
         return 2
@@ -104,7 +141,7 @@ def main() -> int:
             # วงเล็บท้ายชื่อ = สกิล — ให้ตรงกับสกิลจากเว็บ
             name = re.sub(r"\s*\([^()]*\)\s*$", "", e.get("name") or "")
             if name:
-                e["name"] = f"{name} ({ABILITIES[e['ability']]})"
+                e["name"] = f"{name} ({ABILITIES.get(e['ability'], e['ability'])})"
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     backup = root / ".trash" / f"{stamp}-{args.agent}-review" / "_json"
     if not args.dry_run:
@@ -129,6 +166,7 @@ def main() -> int:
         rows.append(row)
         if not image.is_file():
             row["note"] = "ไม่เจอไฟล์แล้ว — ข้าม"
+            row["skip"] = True
             continue
         map_, side = rel.split("/")[:2]
         if e.get("verdict") == "drop":
@@ -166,12 +204,29 @@ def main() -> int:
             meta_mod.set_fields(meta, rel, ability=ability)
         meta_mod.save(root / "meta.json", meta)
 
+    if not args.dry_run:
+        done_path = review_dir / "done.json"
+        try:
+            done = set(json.loads(done_path.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            done = set()
+        done |= {row["after"] for row in rows if row["after"]}
+        done_path.write_text(json.dumps(sorted(done), ensure_ascii=False, indent=1), encoding="utf-8")
+
     write_report(root, args.agent, rows, args.dry_run)
-    kept = sum(1 for r in rows if r["after"])
-    print(f"{'(ทดลอง) ' if args.dry_run else ''}ตรวจ {len(rows)} ใบ · เก็บ {kept} · ตัด {len(rows) - kept} "
+    kept = sum(1 for r in rows if r["after"] and not r.get("skip"))
+    skipped = sum(1 for r in rows if r.get("skip"))
+    if skipped:
+        print(f"ข้าม (ไม่เจอไฟล์) {skipped} ใบ")
+    print(f"{'(ทดลอง) ' if args.dry_run else ''}ตรวจ {len(rows)} ใบ · เก็บ {kept} · ตัด {len(rows) - kept - skipped} "
           f"· ปักหมุด {len(pins)} · แท็กสกิล {len(tags)}")
-    print(f"สรุป: {root / (args.agent + '-review.html')}")
+    print(f"สรุป: {report_path(root, args.agent, args.dry_run)}")
     return 0
+
+
+def report_path(root: Path, agent: str, dry: bool) -> Path:
+    """รอบทดลองเขียนแยกไฟล์ — ไม่ทับหน้าสรุปของรอบที่แก้จริงไปแล้ว (เคยทับมาแล้วครั้งหนึ่ง)."""
+    return root / f"{agent}-review{'-dryrun' if dry else ''}.html"
 
 
 def write_report(root: Path, agent: str, rows: list[dict], dry: bool) -> None:
@@ -218,7 +273,7 @@ img{{width:360px;display:block}}tr.drop{{background:#f3dede}}tr.drop img{{opacit
 <body><h1>ตรวจไลน์อัพ {agent} ทีละรูป {'(ทดลอง ยังไม่ได้แก้จริง)' if dry else ''}</h1>
 <p>ตรวจ {total} ใบ · เก็บ {kept} · ตัด {total - kept} (อยู่ใน .trash กู้คืนได้) · คลิกรูปดูเต็ม</p>
 {''.join(parts)}</body></html>"""
-    (root / f"{agent}-review.html").write_text(page, encoding="utf-8")
+    report_path(root, agent, dry).write_text(page, encoding="utf-8")
 
 
 if __name__ == "__main__":
