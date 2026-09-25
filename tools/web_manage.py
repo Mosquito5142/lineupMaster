@@ -40,6 +40,7 @@ from lineupmaster import callouts as callout_mod  # noqa: E402
 from lineupmaster import config as config_mod  # noqa: E402
 from lineupmaster import index as index_mod  # noqa: E402
 from lineupmaster import library as lib  # noqa: E402
+from lineupmaster import merge as merge_mod  # noqa: E402
 from lineupmaster import meta as meta_mod  # noqa: E402
 from lineupmaster import positions as pos_mod  # noqa: E402
 from lineupmaster.browser import ABILITY_TH, AGENT_ABILITIES, AGENT_TH, SIDES, SITES  # noqa: E402
@@ -76,6 +77,7 @@ class Store:
         self.lineups: list = []
         self.positions: dict = {}
         self.meta: dict = {}
+        self.merge_plan: dict | None = None   # แผนรวมคลังล่าสุดที่ผู้ใช้กำลังดูสรุปอยู่
         self.reload()
 
     def reload(self) -> None:
@@ -273,6 +275,37 @@ class Store:
             meta_mod.save(ROOT / "meta.json", self.meta)
         self.reload()
         return {"done": done}
+
+    # -- รวมคลังจากโฟลเดอร์อื่น (ตัวรวมจริงอยู่ที่ lineupmaster/merge.py) -------------
+    def merge_candidates(self) -> dict:
+        """โฟลเดอร์คลังอื่นในเครื่องที่น่าจะอยากรวม — แถวโฟลเดอร์แม่ของโปรแกรม, Desktop, Downloads."""
+        home = Path.home()
+        roots = [ROOT.parent, home / "Desktop", home / "Downloads", home / "Documents",
+                 home / "OneDrive" / "Desktop"]
+        return {"folders": merge_mod.find_candidates(roots, exclude=ROOT)}
+
+    def merge_preview(self, path: str | None) -> dict:
+        """ดูว่าจะรวมอะไรบ้าง (อ่านอย่างเดียว) แล้วจำแผนไว้ให้ ``merge_apply`` ใช้.
+
+        รับ path แบบที่ Explorer ก๊อปให้ได้เลย ("Copy as path" มีเครื่องหมายคำพูดครอบมาด้วย)
+        """
+        raw = str(path or "").strip().strip('"').strip()
+        if not raw:
+            raise ValueError("ยังไม่ได้เลือกโฟลเดอร์")
+        folder = Path(raw)
+        if not folder.is_dir():
+            raise ValueError(f"ไม่เจอโฟลเดอร์นี้: {raw}")
+        self.merge_plan = merge_mod.plan(ROOT, folder)
+        return self.merge_plan
+
+    def merge_apply(self, choices: dict) -> dict:
+        """รวมตามแผนที่ดูสรุปไว้ล่าสุด — ใช้ได้ครั้งเดียว (ล้มเพราะคลังเปลี่ยนก็ต้องดูสรุปใหม่)."""
+        if self.merge_plan is None:
+            raise ValueError("ยังไม่ได้ดูสรุป — เลือกโฟลเดอร์แล้วกดดูสรุปก่อน")
+        plan, self.merge_plan = self.merge_plan, None
+        report = merge_mod.apply(plan, choices)
+        self.reload()
+        return {"report": report}
 
 
 class SourceBrowser:
@@ -575,6 +608,10 @@ class Handler(BaseHTTPRequestHandler):
             with store.lock:
                 self._json(store.state())
             return
+        if route == "/api/merge/candidates":
+            with store.lock:
+                self._json(store.merge_candidates())
+            return
         if route == "/api/map-extras":
             map_ = (query.get("map") or [""])[0]
             side = (query.get("side") or [""])[0] or None
@@ -671,6 +708,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json(self.source.take(store, body))
         elif route == "/api/source/skip":
             self._json(self.source.skip(body.get("uid") or body.get("id")))
+        elif route == "/api/merge/preview":
+            self._json(store.merge_preview(body.get("path")))
+        elif route == "/api/merge/apply":
+            self._json(store.merge_apply(body.get("choices") or {}))
         elif route == "/api/reload":
             store.reload()
             self._json(store.state())
