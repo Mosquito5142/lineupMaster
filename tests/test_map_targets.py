@@ -44,7 +44,7 @@ class MapTargetsTest(unittest.TestCase):
                           lineup("s1", "sova", "recon"), lineup("s2", "sova", "shock")]
         self.b.f_agent = "kayo"
         seen = [self.b.cycle_ability() and self.b.f_ability for _ in range(3)]
-        self.assertEqual(seen, ["flash", "knife", None])
+        self.assertEqual(seen, ["knife", "flash", None], "วนตามลำดับสกิลของ KAY/O (มีด ก่อน แฟลช)")
         self.b.f_agent = None
         self.assertEqual(self.b._available("ability"), ["flash", "knife", "recon", "shock"])
 

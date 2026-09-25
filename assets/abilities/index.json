@@ -1,0 +1,756 @@
+{
+ "astra": [
+  {
+   "tag": "nova-pulse",
+   "name": "Nova Pulse",
+   "slot": "Ability1",
+   "file": "astra/nova-pulse.png"
+  },
+  {
+   "tag": "nebula-dissipate",
+   "name": "Nebula  / Dissipate",
+   "slot": "Ability2",
+   "file": "astra/nebula-dissipate.png"
+  },
+  {
+   "tag": "gravity-well",
+   "name": "Gravity Well",
+   "slot": "Grenade",
+   "file": "astra/gravity-well.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Astral Form / Cosmic Divide",
+   "slot": "Ultimate",
+   "file": "astra/ult.png"
+  }
+ ],
+ "breach": [
+  {
+   "tag": "flash",
+   "name": "Flashpoint",
+   "slot": "Ability1",
+   "file": "breach/flash.png"
+  },
+  {
+   "tag": "fault-line",
+   "name": "Fault Line",
+   "slot": "Ability2",
+   "file": "breach/fault-line.png"
+  },
+  {
+   "tag": "shock",
+   "name": "Aftershock",
+   "slot": "Grenade",
+   "file": "breach/shock.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Rolling Thunder",
+   "slot": "Ultimate",
+   "file": "breach/ult.png"
+  }
+ ],
+ "brimstone": [
+  {
+   "tag": "smoke",
+   "name": "Sky Smoke",
+   "slot": "Ability2",
+   "file": "brimstone/smoke.png"
+  },
+  {
+   "tag": "molly",
+   "name": "Incendiary",
+   "slot": "Ability1",
+   "file": "brimstone/molly.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Orbital Strike",
+   "slot": "Ultimate",
+   "file": "brimstone/ult.png"
+  },
+  {
+   "tag": "stim-beacon",
+   "name": "Stim Beacon",
+   "slot": "Grenade",
+   "file": "brimstone/stim-beacon.png"
+  }
+ ],
+ "chamber": [
+  {
+   "tag": "headhunter",
+   "name": "Headhunter",
+   "slot": "Ability1",
+   "file": "chamber/headhunter.png"
+  },
+  {
+   "tag": "rendezvous",
+   "name": "Rendezvous",
+   "slot": "Ability2",
+   "file": "chamber/rendezvous.png"
+  },
+  {
+   "tag": "trademark",
+   "name": "Trademark",
+   "slot": "Grenade",
+   "file": "chamber/trademark.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Tour De Force",
+   "slot": "Ultimate",
+   "file": "chamber/ult.png"
+  }
+ ],
+ "clove": [
+  {
+   "tag": "meddle",
+   "name": "Meddle",
+   "slot": "Ability1",
+   "file": "clove/meddle.png"
+  },
+  {
+   "tag": "ruse",
+   "name": "Ruse",
+   "slot": "Ability2",
+   "file": "clove/ruse.png"
+  },
+  {
+   "tag": "pick-me-up",
+   "name": "Pick-me-up",
+   "slot": "Grenade",
+   "file": "clove/pick-me-up.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Not Dead Yet",
+   "slot": "Ultimate",
+   "file": "clove/ult.png"
+  }
+ ],
+ "cypher": [
+  {
+   "tag": "trapwire",
+   "name": "Trapwire",
+   "slot": "Grenade",
+   "file": "cypher/trapwire.png"
+  },
+  {
+   "tag": "cage",
+   "name": "Cyber Cage",
+   "slot": "Ability1",
+   "file": "cypher/cage.png"
+  },
+  {
+   "tag": "camera",
+   "name": "Spycam",
+   "slot": "Ability2",
+   "file": "cypher/camera.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Neural Theft",
+   "slot": "Ultimate",
+   "file": "cypher/ult.png"
+  }
+ ],
+ "deadlock": [
+  {
+   "tag": "sonic-sensor",
+   "name": "Sonic Sensor",
+   "slot": "Ability1",
+   "file": "deadlock/sonic-sensor.png"
+  },
+  {
+   "tag": "gravnet",
+   "name": "GravNet",
+   "slot": "Ability2",
+   "file": "deadlock/gravnet.png"
+  },
+  {
+   "tag": "barrier-mesh",
+   "name": "Barrier Mesh",
+   "slot": "Grenade",
+   "file": "deadlock/barrier-mesh.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Annihilation",
+   "slot": "Ultimate",
+   "file": "deadlock/ult.png"
+  }
+ ],
+ "fade": [
+  {
+   "tag": "seize",
+   "name": "Seize",
+   "slot": "Ability1",
+   "file": "fade/seize.png"
+  },
+  {
+   "tag": "recon",
+   "name": "Haunt",
+   "slot": "Ability2",
+   "file": "fade/recon.png"
+  },
+  {
+   "tag": "drone",
+   "name": "Prowler",
+   "slot": "Grenade",
+   "file": "fade/drone.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Nightfall",
+   "slot": "Ultimate",
+   "file": "fade/ult.png"
+  }
+ ],
+ "gekko": [
+  {
+   "tag": "wingman",
+   "name": "Wingman",
+   "slot": "Ability1",
+   "file": "gekko/wingman.png"
+  },
+  {
+   "tag": "dizzy",
+   "name": "Dizzy",
+   "slot": "Ability2",
+   "file": "gekko/dizzy.png"
+  },
+  {
+   "tag": "molly",
+   "name": "Mosh Pit",
+   "slot": "Grenade",
+   "file": "gekko/molly.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Thrash",
+   "slot": "Ultimate",
+   "file": "gekko/ult.png"
+  }
+ ],
+ "harbor": [
+  {
+   "tag": "high-tide",
+   "name": "High Tide",
+   "slot": "Ability1",
+   "file": "harbor/high-tide.png"
+  },
+  {
+   "tag": "smoke",
+   "name": "Cove",
+   "slot": "Ability2",
+   "file": "harbor/smoke.png"
+  },
+  {
+   "tag": "storm-surge",
+   "name": "Storm Surge",
+   "slot": "Grenade",
+   "file": "harbor/storm-surge.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Reckoning",
+   "slot": "Ultimate",
+   "file": "harbor/ult.png"
+  }
+ ],
+ "iso": [
+  {
+   "tag": "undercut",
+   "name": "Undercut",
+   "slot": "Ability1",
+   "file": "iso/undercut.png"
+  },
+  {
+   "tag": "double-tap",
+   "name": "Double Tap",
+   "slot": "Ability2",
+   "file": "iso/double-tap.png"
+  },
+  {
+   "tag": "contingency",
+   "name": "Contingency",
+   "slot": "Grenade",
+   "file": "iso/contingency.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Kill Contract",
+   "slot": "Ultimate",
+   "file": "iso/ult.png"
+  }
+ ],
+ "jett": [
+  {
+   "tag": "updraft",
+   "name": "Updraft",
+   "slot": "Ability1",
+   "file": "jett/updraft.png"
+  },
+  {
+   "tag": "tailwind",
+   "name": "Tailwind",
+   "slot": "Ability2",
+   "file": "jett/tailwind.png"
+  },
+  {
+   "tag": "smoke",
+   "name": "Cloudburst",
+   "slot": "Grenade",
+   "file": "jett/smoke.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Blade Storm",
+   "slot": "Ultimate",
+   "file": "jett/ult.png"
+  }
+ ],
+ "kayo": [
+  {
+   "tag": "knife",
+   "name": "ZERO/point",
+   "slot": "Ability2",
+   "file": "kayo/knife.png"
+  },
+  {
+   "tag": "molly",
+   "name": "FRAG/ment",
+   "slot": "Grenade",
+   "file": "kayo/molly.png"
+  },
+  {
+   "tag": "flash",
+   "name": "FLASH/drive",
+   "slot": "Ability1",
+   "file": "kayo/flash.png"
+  },
+  {
+   "tag": "ult",
+   "name": "NULL/cmd",
+   "slot": "Ultimate",
+   "file": "kayo/ult.png"
+  }
+ ],
+ "killjoy": [
+  {
+   "tag": "alarmbot",
+   "name": "ALARMBOT",
+   "slot": "Ability1",
+   "file": "killjoy/alarmbot.png"
+  },
+  {
+   "tag": "turret",
+   "name": "TURRET",
+   "slot": "Ability2",
+   "file": "killjoy/turret.png"
+  },
+  {
+   "tag": "molly",
+   "name": "Nanoswarm",
+   "slot": "Grenade",
+   "file": "killjoy/molly.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Lockdown",
+   "slot": "Ultimate",
+   "file": "killjoy/ult.png"
+  }
+ ],
+ "miks": [
+  {
+   "tag": "harmonize",
+   "name": "Harmonize",
+   "slot": "Ability1",
+   "file": "miks/harmonize.png"
+  },
+  {
+   "tag": "waveform",
+   "name": "Waveform",
+   "slot": "Ability2",
+   "file": "miks/waveform.png"
+  },
+  {
+   "tag": "m-pulse",
+   "name": "M-pulse",
+   "slot": "Grenade",
+   "file": "miks/m-pulse.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Bassquake",
+   "slot": "Ultimate",
+   "file": "miks/ult.png"
+  }
+ ],
+ "neon": [
+  {
+   "tag": "shock",
+   "name": "Relay Bolt",
+   "slot": "Ability1",
+   "file": "neon/shock.png"
+  },
+  {
+   "tag": "high-gear",
+   "name": "High Gear",
+   "slot": "Ability2",
+   "file": "neon/high-gear.png"
+  },
+  {
+   "tag": "fast-lane",
+   "name": "Fast Lane",
+   "slot": "Grenade",
+   "file": "neon/fast-lane.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Overdrive",
+   "slot": "Ultimate",
+   "file": "neon/ult.png"
+  }
+ ],
+ "omen": [
+  {
+   "tag": "flash",
+   "name": "Paranoia",
+   "slot": "Ability1",
+   "file": "omen/flash.png"
+  },
+  {
+   "tag": "smoke",
+   "name": "Dark Cover",
+   "slot": "Ability2",
+   "file": "omen/smoke.png"
+  },
+  {
+   "tag": "shrouded-step",
+   "name": "Shrouded Step",
+   "slot": "Grenade",
+   "file": "omen/shrouded-step.png"
+  },
+  {
+   "tag": "ult",
+   "name": "From the Shadows",
+   "slot": "Ultimate",
+   "file": "omen/ult.png"
+  }
+ ],
+ "phoenix": [
+  {
+   "tag": "molly",
+   "name": "Hot Hands",
+   "slot": "Ability1",
+   "file": "phoenix/molly.png"
+  },
+  {
+   "tag": "flash",
+   "name": "Curveball",
+   "slot": "Ability2",
+   "file": "phoenix/flash.png"
+  },
+  {
+   "tag": "wall",
+   "name": "Blaze",
+   "slot": "Grenade",
+   "file": "phoenix/wall.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Run it Back",
+   "slot": "Ultimate",
+   "file": "phoenix/ult.png"
+  }
+ ],
+ "raze": [
+  {
+   "tag": "blast-pack",
+   "name": "Blast Pack",
+   "slot": "Ability1",
+   "file": "raze/blast-pack.png"
+  },
+  {
+   "tag": "paint-shells",
+   "name": "Paint Shells",
+   "slot": "Ability2",
+   "file": "raze/paint-shells.png"
+  },
+  {
+   "tag": "boom-bot",
+   "name": "Boom Bot",
+   "slot": "Grenade",
+   "file": "raze/boom-bot.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Showstopper",
+   "slot": "Ultimate",
+   "file": "raze/ult.png"
+  }
+ ],
+ "reyna": [
+  {
+   "tag": "devour",
+   "name": "Devour",
+   "slot": "Ability1",
+   "file": "reyna/devour.png"
+  },
+  {
+   "tag": "dismiss",
+   "name": "Dismiss",
+   "slot": "Ability2",
+   "file": "reyna/dismiss.png"
+  },
+  {
+   "tag": "leer",
+   "name": "Leer",
+   "slot": "Grenade",
+   "file": "reyna/leer.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Empress",
+   "slot": "Ultimate",
+   "file": "reyna/ult.png"
+  }
+ ],
+ "sage": [
+  {
+   "tag": "slow-orb",
+   "name": "Slow Orb",
+   "slot": "Ability1",
+   "file": "sage/slow-orb.png"
+  },
+  {
+   "tag": "healing-orb",
+   "name": "Healing Orb",
+   "slot": "Ability2",
+   "file": "sage/healing-orb.png"
+  },
+  {
+   "tag": "barrier-orb",
+   "name": "Barrier Orb",
+   "slot": "Grenade",
+   "file": "sage/barrier-orb.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Resurrection",
+   "slot": "Ultimate",
+   "file": "sage/ult.png"
+  }
+ ],
+ "skye": [
+  {
+   "tag": "wall",
+   "name": "Trailblazer",
+   "slot": "Ability1",
+   "file": "skye/wall.png"
+  },
+  {
+   "tag": "guiding-light",
+   "name": "Guiding Light",
+   "slot": "Ability2",
+   "file": "skye/guiding-light.png"
+  },
+  {
+   "tag": "regrowth",
+   "name": "Regrowth",
+   "slot": "Grenade",
+   "file": "skye/regrowth.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Seekers",
+   "slot": "Ultimate",
+   "file": "skye/ult.png"
+  }
+ ],
+ "sova": [
+  {
+   "tag": "recon",
+   "name": "Recon Bolt",
+   "slot": "Ability2",
+   "file": "sova/recon.png"
+  },
+  {
+   "tag": "shock",
+   "name": "Shock Bolt",
+   "slot": "Ability1",
+   "file": "sova/shock.png"
+  },
+  {
+   "tag": "drone",
+   "name": "Owl Drone",
+   "slot": "Grenade",
+   "file": "sova/drone.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Hunter's Fury",
+   "slot": "Ultimate",
+   "file": "sova/ult.png"
+  }
+ ],
+ "tejo": [
+  {
+   "tag": "special-delivery",
+   "name": "Special Delivery",
+   "slot": "Ability1",
+   "file": "tejo/special-delivery.png"
+  },
+  {
+   "tag": "guided-salvo",
+   "name": "Guided Salvo",
+   "slot": "Ability2",
+   "file": "tejo/guided-salvo.png"
+  },
+  {
+   "tag": "drone",
+   "name": "Stealth Drone",
+   "slot": "Grenade",
+   "file": "tejo/drone.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Armageddon",
+   "slot": "Ultimate",
+   "file": "tejo/ult.png"
+  }
+ ],
+ "veto": [
+  {
+   "tag": "chokehold",
+   "name": "Chokehold",
+   "slot": "Ability1",
+   "file": "veto/chokehold.png"
+  },
+  {
+   "tag": "interceptor",
+   "name": "Interceptor",
+   "slot": "Ability2",
+   "file": "veto/interceptor.png"
+  },
+  {
+   "tag": "crosscut",
+   "name": "Crosscut",
+   "slot": "Grenade",
+   "file": "veto/crosscut.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Evolution",
+   "slot": "Ultimate",
+   "file": "veto/ult.png"
+  }
+ ],
+ "viper": [
+  {
+   "tag": "smoke",
+   "name": "Poison Cloud",
+   "slot": "Ability1",
+   "file": "viper/smoke.png"
+  },
+  {
+   "tag": "wall",
+   "name": "Toxic Screen",
+   "slot": "Ability2",
+   "file": "viper/wall.png"
+  },
+  {
+   "tag": "molly",
+   "name": "Snake Bite",
+   "slot": "Grenade",
+   "file": "viper/molly.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Viper's Pit",
+   "slot": "Ultimate",
+   "file": "viper/ult.png"
+  }
+ ],
+ "vyse": [
+  {
+   "tag": "shear",
+   "name": "Shear",
+   "slot": "Ability1",
+   "file": "vyse/shear.png"
+  },
+  {
+   "tag": "arc-rose",
+   "name": "Arc Rose",
+   "slot": "Ability2",
+   "file": "vyse/arc-rose.png"
+  },
+  {
+   "tag": "razorvine",
+   "name": "Razorvine",
+   "slot": "Grenade",
+   "file": "vyse/razorvine.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Steel Garden",
+   "slot": "Ultimate",
+   "file": "vyse/ult.png"
+  }
+ ],
+ "waylay": [
+  {
+   "tag": "lightspeed",
+   "name": "Lightspeed",
+   "slot": "Ability1",
+   "file": "waylay/lightspeed.png"
+  },
+  {
+   "tag": "refract",
+   "name": "Refract",
+   "slot": "Ability2",
+   "file": "waylay/refract.png"
+  },
+  {
+   "tag": "saturate",
+   "name": "Saturate",
+   "slot": "Grenade",
+   "file": "waylay/saturate.png"
+  },
+  {
+   "tag": "ult",
+   "name": "Convergent Paths",
+   "slot": "Ultimate",
+   "file": "waylay/ult.png"
+  }
+ ],
+ "yoru": [
+  {
+   "tag": "flash",
+   "name": "BLINDSIDE",
+   "slot": "Ability1",
+   "file": "yoru/flash.png"
+  },
+  {
+   "tag": "gatecrash",
+   "name": "GATECRASH",
+   "slot": "Ability2",
+   "file": "yoru/gatecrash.png"
+  },
+  {
+   "tag": "fakeout",
+   "name": "FAKEOUT",
+   "slot": "Grenade",
+   "file": "yoru/fakeout.png"
+  },
+  {
+   "tag": "ult",
+   "name": "DIMENSIONAL DRIFT",
+   "slot": "Ultimate",
+   "file": "yoru/ult.png"
+  }
+ ]
+}
