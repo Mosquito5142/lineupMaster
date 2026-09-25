@@ -738,3 +738,8 @@ dialog.merge details summary { cursor: pointer; color: var(--ink-2); }
 dialog.merge .warn-line { margin-top: 8px; padding-left: 8px; box-shadow: inset 3px 0 0 var(--target); }
 .merge-list li select { display: block; margin-top: 6px; width: 100%; }
 .merge-error { color: var(--stop); }
+p.merge-error { margin: 12px 0 0; font-size: 12px; }
+.merge-thumbs { display: flex; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+.merge-thumbs figure { margin: 0; display: grid; gap: 2px; }
+.merge-thumbs img { max-height: 90px; max-width: 160px; object-fit: contain; background: var(--sheet); }
+.merge-thumbs figcaption { font-size: 11px; color: var(--ink-2); }

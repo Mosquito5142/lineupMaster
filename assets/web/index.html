@@ -352,6 +352,7 @@
     <ul id="merge-found" class="merge-found"></ul>
     <label class="wide">หรือวาง path ของโฟลเดอร์เอง
       <input id="merge-path" type="text" placeholder="C:\Users\...\LineupMaster" autocomplete="off"></label>
+    <p id="merge-pick-error" class="merge-error" hidden></p>
     <menu>
       <button type="button" data-merge-close>ปิด</button>
       <button id="merge-go" type="button" class="primary">ดูสรุป</button>
@@ -366,7 +367,8 @@
       <ul id="merge-ask" class="merge-list"></ul>
     </div>
     <div id="merge-conflicts-box" hidden>
-      <h3>ขัดกัน — รูป: ค่าเริ่มต้นเอาอันที่แก้ล่าสุด (เปลี่ยนได้) · หมุด/สกิล/ป้าย: ไม่ติ๊ก = เก็บของที่นี่ · ติ๊ก = ใช้ของโฟลเดอร์นั้น</h3>
+      <h3>ขัดกัน — รูป: ค่าเริ่มต้นเอาอันที่แก้ล่าสุด (เปลี่ยนได้) · โน้ต/gif/หมุด/สกิล/ป้าย: ไม่ติ๊ก = เก็บของที่นี่ · ติ๊ก = ใช้ของโฟลเดอร์นั้น (โน้ต/gif ติ๊กอันที่แก้ล่าสุดไว้ให้)</h3>
+      <p id="merge-clock" class="hint warn-line" hidden>เวลาไฟล์ของโฟลเดอร์หนึ่งเชื่อไม่ได้ (น่าจะมาจากการดาวน์โหลด/แตก zip) — ค่าเริ่มต้นเลยเก็บของที่นี่ ดูรูปแล้วเลือกเองได้</p>
       <ul id="merge-conflicts" class="merge-list"></ul>
     </div>
     <label class="wide">ค่าเฉพาะเครื่อง (กรอบแคปชื่อโซน · โฟลเดอร์ภาพแคป · แมพล่าสุด)
@@ -377,6 +379,7 @@
       <summary>รายละเอียดที่จัดการให้อัตโนมัติ</summary>
       <ul id="merge-detail" class="merge-list"></ul>
     </details>
+    <p id="merge-error" class="merge-error" hidden></p>
     <menu>
       <button id="merge-back" type="button">ย้อนกลับ</button>
       <button id="merge-apply" type="button" class="primary">รวมเลย</button>

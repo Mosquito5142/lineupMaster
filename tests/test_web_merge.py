@@ -58,9 +58,28 @@ class WebMergeTest(unittest.TestCase):
             self.store.merge_preview(str(BASE / "nope"))
 
     def test_candidates_list_other_folder_but_not_this_one(self) -> None:
-        paths_found = [c["path"] for c in self.store.merge_candidates()["folders"]]
+        # ส่งรากเองให้ไม่ไปสแกน Desktop จริงของเครื่อง (F11)
+        paths_found = [c["path"] for c in self.store.merge_candidates(roots=[BASE])["folders"]]
         self.assertIn(str(THERE.resolve()), paths_found)
         self.assertNotIn(str(HERE.resolve()), paths_found)
+
+    def test_config_copy_is_reloaded(self) -> None:
+        (THERE / "aliases.yaml").write_text("maps:\n  lotus: [lotus]\n", encoding="utf-8")
+        self.store.merge_preview(str(THERE))
+        self.store.merge_apply({"config": True})
+        self.assertIn("lotus", self.store.cfg.aliases.get("maps") or {})
+
+    def test_conflict_image_comes_only_from_the_plan(self) -> None:
+        self.assertIsNone(self.store.merge_image("here", 1), "ยังไม่มีแผน")
+        (THERE / "lineups" / A).write_bytes(b"theirs")
+        plan = self.store.merge_preview(str(THERE))
+        image = next(c for c in plan["conflicts"] if c["kind"] == "image")
+        self.assertEqual(self.store.merge_image("here", image["id"]).read_bytes(), b"a")
+        self.assertEqual(self.store.merge_image("there", image["id"]).read_bytes(), b"theirs")
+        self.assertIsNone(self.store.merge_image("there", 9999))
+        self.assertIsNone(self.store.merge_image("elsewhere", image["id"]))
+        copy = plan["copy"][0]["id"]
+        self.assertIsNone(self.store.merge_image("there", copy), "ไม่ใช่รายการรูปที่ขัดกัน")
 
 
 if __name__ == "__main__":

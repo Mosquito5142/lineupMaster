@@ -277,12 +277,31 @@ class Store:
         return {"done": done}
 
     # -- รวมคลังจากโฟลเดอร์อื่น (ตัวรวมจริงอยู่ที่ lineupmaster/merge.py) -------------
-    def merge_candidates(self) -> dict:
-        """โฟลเดอร์คลังอื่นในเครื่องที่น่าจะอยากรวม — แถวโฟลเดอร์แม่ของโปรแกรม, Desktop, Downloads."""
-        home = Path.home()
-        roots = [ROOT.parent, home / "Desktop", home / "Downloads", home / "Documents",
-                 home / "OneDrive" / "Desktop"]
+    def merge_candidates(self, roots: list[Path] | None = None) -> dict:
+        """โฟลเดอร์คลังอื่นในเครื่องที่น่าจะอยากรวม — แถวโฟลเดอร์แม่ของโปรแกรม, Desktop, Downloads.
+
+        ``roots`` ไว้ให้เทสต์ส่งโฟลเดอร์จำลองเอง (ไม่ไปสแกนโฟลเดอร์จริงของเครื่อง)
+        """
+        if roots is None:
+            home = Path.home()
+            roots = [ROOT.parent, home / "Desktop", home / "Downloads", home / "Documents",
+                     home / "OneDrive" / "Desktop"]
         return {"folders": merge_mod.find_candidates(roots, exclude=ROOT)}
+
+    def merge_image(self, side: str, conflict_id: int) -> Path | None:
+        """ไฟล์รูปของรายการ "รูปขัดกัน" ในแผนที่ดูสรุปอยู่ ไว้โชว์รูปย่อให้เทียบ — อ่านอย่างเดียว.
+
+        path มาจากแผนที่เซิร์ฟเวอร์สร้างเองเท่านั้น (คีย์ของรายการนั้นใต้โฟลเดอร์รูปของฝั่งที่ขอ)
+        ไม่รับ path จากหน้าเว็บเด็ดขาด · ไม่มีแผน/ไม่เจอ id/ไม่ใช่รายการรูป = None
+        """
+        plan = self.merge_plan
+        if plan is None or side not in ("here", "there"):
+            return None
+        item = next((c for c in plan["conflicts"] if c["id"] == conflict_id), None)
+        if item is None or item["kind"] != "image":
+            return None
+        path = merge_mod.lineups_dir(Path(plan[side])) / item["key"]
+        return path if path.is_file() else None
 
     def merge_preview(self, path: str | None) -> dict:
         """ดูว่าจะรวมอะไรบ้าง (อ่านอย่างเดียว) แล้วจำแผนไว้ให้ ``merge_apply`` ใช้.
@@ -304,6 +323,7 @@ class Store:
             raise ValueError("ยังไม่ได้ดูสรุป — เลือกโฟลเดอร์แล้วกดดูสรุปก่อน")
         plan, self.merge_plan = self.merge_plan, None
         report = merge_mod.apply(plan, choices)
+        self.cfg = config_mod.load(ROOT)       # อาจเพิ่งก๊อป config.yaml/aliases.yaml ของโน่นมา
         self.reload()
         return {"report": report}
 
@@ -611,6 +631,21 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/merge/candidates":
             # สแกนโฟลเดอร์ในเครื่องนาน และไม่แตะข้อมูลของ Store — ไม่ถือล็อก หน้าเว็บจะได้ไม่ค้าง
             self._json(store.merge_candidates())
+            return
+        if route == "/api/merge/image":
+            # รูปย่อของรูปที่ขัดกัน — หา path จากแผนที่จำไว้เท่านั้น (ดู Store.merge_image)
+            side = (query.get("side") or [""])[0]
+            try:
+                conflict_id = int((query.get("id") or [""])[0])
+            except ValueError:
+                conflict_id = -1
+            with store.lock:
+                path = store.merge_image(side, conflict_id)
+            if path is None:
+                self._fail("ไม่เจอรูปนี้ในสรุปที่ดูอยู่", 404)
+                return
+            ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+            self._send(200, path.read_bytes(), ctype)
             return
         if route == "/api/map-extras":
             map_ = (query.get("map") or [""])[0]
