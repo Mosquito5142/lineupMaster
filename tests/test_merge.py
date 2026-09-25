@@ -82,6 +82,7 @@ class MergeTest(unittest.TestCase):
     def test_same_name_different_image_keeps_here_unless_chosen(self) -> None:
         here = make_root(self.base, "here", {A: b"mine"})
         there = make_root(self.base, "there", {A: b"theirs"})
+        before = tree_hash(there)
         plan, _ = run(here, there)
         self.assertEqual([c["kind"] for c in plan["conflicts"]], ["image"])
         self.assertEqual((here / "lineups" / A).read_bytes(), b"mine")
@@ -92,6 +93,7 @@ class MergeTest(unittest.TestCase):
         self.assertEqual((here / "lineups" / A).read_bytes(), b"theirs")
         trashed = list((here / ".trash").rglob("A Main.png"))
         self.assertEqual([p.read_bytes() for p in trashed], [b"mine"])
+        self.assertEqual(tree_hash(there), before, "ห้ามเขียนอะไรลงโฟลเดอร์อีกฝั่ง")
 
     def test_pin_conflict_and_meta_field_merge(self) -> None:
         here = make_root(self.base, "here", {A: b"a"})
@@ -143,6 +145,7 @@ class MergeTest(unittest.TestCase):
         there = make_root(self.base, "there", {A: b"a", B: b"b"})
         put(here, "positions.json", {B: {"from": [0.3, 0.3]}})
         lib.remove(there, there / "lineups", there / "lineups" / B)
+        before = tree_hash(there)
 
         plan, report = run(here, there)
 
@@ -151,6 +154,7 @@ class MergeTest(unittest.TestCase):
         self.assertFalse((here / "lineups" / B).exists())
         self.assertTrue(list((here / ".trash").rglob("B Site.png")))
         self.assertNotIn(B, get(here, "positions.json"))
+        self.assertEqual(tree_hash(there), before, "ห้ามเขียนอะไรลงโฟลเดอร์อีกฝั่ง")
 
     def test_renamed_there_renames_here_with_sidecar(self) -> None:
         here = make_root(self.base, "here", {A: b"a", A.replace(".png", ".gif"): b"g"})
@@ -158,6 +162,7 @@ class MergeTest(unittest.TestCase):
         put(here, "meta.json", {A: {"fav": True}})
         new = lib.rename(there, there / "lineups", there / "lineups" / A, "A Main Fast").path
         new_rel = lib.rel_of(there / "lineups", new)
+        before = tree_hash(there)
 
         plan, report = run(here, there)
 
@@ -166,6 +171,7 @@ class MergeTest(unittest.TestCase):
         self.assertTrue((here / "lineups" / new_rel).is_file())
         self.assertTrue((here / "lineups" / new_rel).with_suffix(".gif").is_file())
         self.assertEqual(get(here, "meta.json"), {new_rel: {"fav": True}})
+        self.assertEqual(tree_hash(there), before, "ห้ามเขียนอะไรลงโฟลเดอร์อีกฝั่ง")
 
     def test_shared_history_is_not_replayed(self) -> None:
         here = make_root(self.base, "here", {A: b"a"})
@@ -295,6 +301,346 @@ class MergeTest(unittest.TestCase):
         found = merge.find_candidates([self.base, self.base / "Downloads"], exclude=here)
         self.assertEqual([c["path"] for c in found], [str(other.resolve())])
         self.assertEqual(found[0]["images"], 2)
+
+    # -- รอบแก้ตามรีวิว ---------------------------------------------------------
+    def test_shared_delete_then_readded_here_is_kept(self) -> None:
+        here = make_root(self.base, "here", {A: b"a", B: b"b-new"})
+        there = make_root(self.base, "there", {A: b"a"})
+        entry = {"old": B, "new": None, "at": "2026-09-01T10:00:00"}
+        journal.save(here, [entry])
+        journal.save(there, [entry])
+
+        plan = merge.plan(here, there)
+
+        self.assertEqual(plan["remove_here"], [])
+        self.assertEqual(plan["skipped"], [], "ประวัติร่วมต้องถูกตัดทิ้ง ไม่ใช่ไปติดตัวกันพลาด")
+
+    def test_name_reused_here_is_not_removed_by_their_delete(self) -> None:
+        here = make_root(self.base, "here", {A: b"v1"})
+        there = make_root(self.base, "there", {A: b"v1"})
+        lib.rename(here, here / "lineups", here / "lineups" / A, "A Main Y")
+        (here / "lineups" / A).write_bytes(b"v2")           # ที่นี่เอาชื่อเดิมไปใช้กับรูปใหม่
+        lib.remove(there, there / "lineups", there / "lineups" / A)
+
+        plan, _ = run(here, there)
+
+        self.assertEqual(plan["remove_here"], [])
+        self.assertIn(A, [s["rel"] for s in plan["skipped"]])
+        self.assertEqual((here / "lineups" / A).read_bytes(), b"v2")
+
+    def test_json_backup_holds_pre_merge_data(self) -> None:
+        here = make_root(self.base, "here", {A: b"a"})
+        there = make_root(self.base, "there", {A: b"a", B: b"b"})
+        put(here, "positions.json", {A: {"from": [0.1, 0.1]}})
+        put(there, "positions.json", {B: {"from": [0.2, 0.2]}})
+        before = get(here, "positions.json")
+
+        run(here, there)
+
+        backups = list((here / ".trash").glob("*-merge/_json/positions.json"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(json.loads(backups[0].read_text(encoding="utf-8")), before)
+        self.assertIn(B, get(here, "positions.json"))
+
+    def test_rename_chain_on_there_lands_on_final_name(self) -> None:
+        here = make_root(self.base, "here", {A: b"a"})
+        there = make_root(self.base, "there", {A: b"a"})
+        put(here, "meta.json", {A: {"tags": ["mine"]}})
+        mid = lib.rename(there, there / "lineups", there / "lineups" / A, "A Main Y").path
+        end = lib.rename(there, there / "lineups", mid, "A Main Z").path
+        end_rel = lib.rel_of(there / "lineups", end)
+        before = tree_hash(there)
+
+        plan, report = run(here, there)
+
+        self.assertEqual([(r["old"], r["new"]) for r in plan["rename_here"]], [(A, end_rel)])
+        self.assertEqual(report["renamed"], 1)
+        self.assertFalse((here / "lineups" / A).exists())
+        self.assertEqual((here / "lineups" / end_rel).read_bytes(), b"a")
+        self.assertEqual(get(here, "meta.json"), {end_rel: {"tags": ["mine"]}})
+        self.assertEqual(tree_hash(there), before)
+
+    def test_rename_shift_and_rename_clash(self) -> None:
+        # อีกเครื่องย้าย B→C แล้ว A→B: ต้องทำ B→C ก่อน ไม่งั้นชน
+        here = make_root(self.base, "here", {A: b"va", B: b"vb"})
+        there = make_root(self.base, "there", {B: b"va", C: b"vb"})
+        journal.save(there, [{"old": B, "new": C, "at": "2026-09-02T10:00:00"},
+                             {"old": A, "new": B, "at": "2026-09-02T10:00:01"}])
+        put(here, "meta.json", {A: {"tags": ["a"]}, B: {"tags": ["b"]}})
+
+        plan, report = run(here, there)
+
+        self.assertEqual(report["errors"], [])
+        self.assertEqual((report["renamed"], report["copied"]), (2, 0))
+        self.assertEqual({rel: p.read_bytes() for rel, p in merge.images(here).items()},
+                         {B: b"va", C: b"vb"})
+        self.assertEqual(get(here, "meta.json"), {B: {"tags": ["a"]}, C: {"tags": ["b"]}})
+
+        # ชื่อใหม่ต่างจากใบที่มีอยู่แค่ตัวพิมพ์ → ไม่เปลี่ยนชื่อ ไม่ก๊อป ข้อมูลตามไปใบเดิม
+        upper = B.replace("B Site", "b site")
+        here = make_root(self.base, "here2", {A: b"va", upper: b"other"})
+        there = make_root(self.base, "there2", {B: b"va"})
+        journal.save(there, [{"old": A, "new": B, "at": "2026-09-02T10:00:00"}])
+        put(there, "positions.json", {B: {"from": [0.4, 0.4]}})
+
+        plan, report = run(here, there)
+
+        self.assertEqual((plan["rename_here"], plan["copy"], plan["ask"]), ([], [], []))
+        self.assertEqual(plan["alias"], {B: A})
+        self.assertEqual((here / "lineups" / A).read_bytes(), b"va")
+        self.assertEqual((here / "lineups" / upper).read_bytes(), b"other")
+        self.assertEqual(get(here, "positions.json"), {A: {"from": [0.4, 0.4]}})
+
+    def test_stale_plan_after_json_change(self) -> None:
+        here = make_root(self.base, "here", {A: b"a"})
+        there = make_root(self.base, "there", {A: b"a"})
+        put(here, "positions.json", {A: {"from": [0.1, 0.1]}})
+        plan = merge.plan(here, there)
+        put(here, "positions.json", {A: {"from": [0.9, 0.9]}})
+        os.utime(here / "positions.json", ns=(1, 1))      # กันกรณีเวลาไฟล์ละเอียดไม่พอ
+        with self.assertRaises(ValueError):
+            merge.apply(plan, {})
+
+    def test_stale_plan_after_same_count_swap(self) -> None:
+        here = make_root(self.base, "here", {A: b"a"})
+        there = make_root(self.base, "there", {A: b"a", B: b"b"})
+        plan = merge.plan(here, there)
+        (there / "lineups" / B).unlink()
+        (there / "lineups" / C).parent.mkdir(parents=True)
+        (there / "lineups" / C).write_bytes(b"c")
+        with self.assertRaises(ValueError):
+            merge.apply(plan, {})
+        self.assertFalse((here / "lineups" / C).exists())
+
+    def test_machine_default_when_both_or_neither_match(self) -> None:
+        here = make_root(self.base, "here", {A: b"a"})
+        there = make_root(self.base, "there", {A: b"a"})
+        for mine, theirs, me in (("PC-A", "PC-A", "PC-A"), ("PC-A", "PC-B", "PC-C")):
+            put(here, "last-view.json", {"machine": mine})
+            put(there, "last-view.json", {"machine": theirs})
+            with mock.patch.dict(os.environ, {"COMPUTERNAME": me}):
+                self.assertEqual(merge.plan(here, there)["machine"]["default"], "there")
+
+    def test_unticked_ask_brings_no_data(self) -> None:
+        here = make_root(self.base, "here", {A: b"a"})
+        there = make_root(self.base, "there", {A: b"a", B: b"b"})
+        (here / ".trash" / "20260101-000000" / Path(B).parent).mkdir(parents=True)
+        (here / ".trash" / "20260101-000000" / B).write_bytes(b"b")
+        put(there, "positions.json", {B: {"from": [0.3, 0.3]}})
+        put(there, "meta.json", {B: {"tags": ["x"]}})
+        put(there, "last-view.json", {"uses": {B: 4}})
+
+        plan, _ = run(here, there)
+
+        self.assertEqual([a["kind"] for a in plan["ask"]], ["new-trashed"])
+        self.assertFalse((here / "lineups" / B).exists())
+        self.assertNotIn(B, get(here, "positions.json"))
+        self.assertNotIn(B, get(here, "meta.json"))
+        self.assertNotIn(B, get(here, "last-view.json").get("uses", {}))
+
+    def test_case_only_clash_never_overwrites(self) -> None:
+        mine = "ascent/attack/sova/A/x.png"
+        theirs = "ascent/attack/sova/a/x.png"
+        here = make_root(self.base, "here", {mine: b"HERE"})
+        there = make_root(self.base, "there", {theirs: b"THERE"})
+        put(there, "positions.json", {theirs: {"from": [0.7, 0.7]}})
+        before = tree_hash(there)
+
+        plan, report = run(here, there)
+
+        self.assertEqual([a["kind"] for a in plan["ask"]], ["case-clash"])
+        self.assertEqual(plan["copy"], [])
+        self.assertEqual((here / "lineups" / mine).read_bytes(), b"HERE")
+        self.assertEqual(get(here, "positions.json"), {})
+
+        plan = merge.plan(here, there)
+        report = merge.apply(plan, {"ask": [a["id"] for a in plan["ask"]]})
+
+        self.assertEqual(report["errors"], [])
+        self.assertEqual((here / "lineups" / mine).read_bytes(), b"HERE")
+        got = {rel: path.read_bytes() for rel, path in merge.images(here).items()}
+        self.assertEqual(len(got), 2)
+        new_rel = next(rel for rel, data in got.items() if data == b"THERE")
+        self.assertNotEqual(new_rel.casefold(), mine.casefold())
+        self.assertEqual(get(here, "positions.json"), {new_rel: {"from": [0.7, 0.7]}})
+        self.assertEqual(tree_hash(there), before)
+
+    def test_name_reused_after_rename_on_there(self) -> None:
+        old = "ascent/attack/sova/A/A Main old.png"
+        here = make_root(self.base, "here", {A: b"v1"})
+        there = make_root(self.base, "there", {A: b"v1"})
+        put(here, "meta.json", {A: {"tags": ["here-v1"]}})
+        lib.rename(there, there / "lineups", there / "lineups" / A, "A Main old")
+        (there / "lineups" / A).write_bytes(b"v2")
+        put(there, "positions.json", {A: {"from": [0.6, 0.6]}})
+        put(there, "meta.json", {A: {"tags": ["there-v2"]}})
+
+        plan, report = run(here, there)
+
+        self.assertEqual([(r["old"], r["new"]) for r in plan["rename_here"]], [(A, old)])
+        self.assertEqual([c["rel"] for c in plan["copy"]], [A])
+        self.assertEqual(plan["ask"], [])
+        self.assertEqual(plan["conflicts"], [])
+        self.assertEqual((here / "lineups" / old).read_bytes(), b"v1")
+        self.assertEqual((here / "lineups" / A).read_bytes(), b"v2")
+        self.assertEqual(get(here, "meta.json"),
+                         {old: {"tags": ["here-v1"]}, A: {"tags": ["there-v2"]}})
+        self.assertEqual(get(here, "positions.json"), {A: {"from": [0.6, 0.6]}})
+
+    def test_delete_then_readd_on_there_is_an_image_conflict(self) -> None:
+        here = make_root(self.base, "here", {A: b"v1"})
+        there = make_root(self.base, "there", {A: b"v1"})
+        put(here, "meta.json", {A: {"tags": ["here-v1"]}})
+        lib.remove(there, there / "lineups", there / "lineups" / A)
+        (there / "lineups" / A).write_bytes(b"v2")
+        put(there, "positions.json", {A: {"from": [0.6, 0.6]}})
+        put(there, "meta.json", {A: {"tags": ["there-v2"]}})
+
+        plan, _ = run(here, there)
+
+        self.assertEqual([(c["kind"], c["key"]) for c in plan["conflicts"]], [("image", A)])
+        self.assertEqual(plan["hold"], [A])
+        self.assertEqual(plan["remove_here"], [])
+        self.assertEqual((here / "lineups" / A).read_bytes(), b"v1")
+        self.assertEqual(get(here, "meta.json"), {A: {"tags": ["here-v1"]}})
+        self.assertEqual(get(here, "positions.json"), {})
+
+        plan = merge.plan(here, there)
+        image = next(c for c in plan["conflicts"] if c["kind"] == "image")
+        report = merge.apply(plan, {"take_there": [image["id"]]})
+
+        self.assertEqual(report["replaced"], 1)
+        self.assertEqual((here / "lineups" / A).read_bytes(), b"v2")
+        self.assertEqual([p.read_bytes() for p in (here / ".trash").rglob("A Main.png")], [b"v1"])
+        self.assertEqual(get(here, "positions.json"), {A: {"from": [0.6, 0.6]}})
+        self.assertEqual(get(here, "meta.json"), {A: {"tags": ["there-v2"]}})
+
+    def test_standalone_gif_remove_rename_replace(self) -> None:
+        G = "ascent/attack/sova/A/G.gif"
+        H = "ascent/attack/sova/A/H.gif"
+        # ลบ: จำลองฝั่งโน้นด้วยบันทึกตรงๆ (library.remove เองก็ยังพังกับ gif เดี่ยว — นอกขอบเขตไฟล์นี้)
+        here = make_root(self.base, "h1", {A: b"a", G: b"g"})
+        there = make_root(self.base, "t1", {A: b"a"})
+        journal.save(there, [{"old": G, "new": None, "at": "2026-09-02T10:00:00"}])
+        _, report = run(here, there)
+        self.assertEqual((report["removed"], report["errors"]), (1, []))
+        self.assertFalse((here / "lineups" / G).exists())
+        self.assertEqual([p.read_bytes() for p in (here / ".trash").rglob("G.gif")], [b"g"])
+
+        # เปลี่ยนชื่อ
+        here = make_root(self.base, "h2", {A: b"a", G: b"g"})
+        there = make_root(self.base, "t2", {A: b"a", H: b"g"})
+        journal.save(there, [{"old": G, "new": H, "at": "2026-09-02T10:00:00"}])
+        put(here, "positions.json", {G: {"from": [0.2, 0.2]}})
+        _, report = run(here, there)
+        self.assertEqual((report["renamed"], report["errors"]), (1, []))
+        self.assertFalse((here / "lineups" / G).exists())
+        self.assertEqual((here / "lineups" / H).read_bytes(), b"g")
+        self.assertEqual(get(here, "positions.json"), {H: {"from": [0.2, 0.2]}})
+
+        # แทนด้วยของอีกฝั่ง
+        here = make_root(self.base, "h3", {G: b"g1"})
+        there = make_root(self.base, "t3", {G: b"g2"})
+        before = tree_hash(there)
+        plan = merge.plan(here, there)
+        report = merge.apply(plan, {"take_there": [c["id"] for c in plan["conflicts"]]})
+        self.assertEqual((report["replaced"], report["errors"]), (1, []))
+        self.assertEqual((here / "lineups" / G).read_bytes(), b"g2")
+        self.assertEqual([p.read_bytes() for p in (here / ".trash").rglob("G.gif")], [b"g1"])
+        self.assertEqual(tree_hash(there), before)
+
+    def test_copy_never_overwrites_a_file_that_appeared(self) -> None:
+        note = B.replace(".png", ".txt")
+        here = make_root(self.base, "here", {A: b"a"})
+        there = make_root(self.base, "there", {A: b"a", B: b"b", note: b"their note"})
+        plan = merge.plan(here, there)
+        (here / "lineups" / note).parent.mkdir(parents=True)
+        (here / "lineups" / note).write_bytes(b"my note")   # ไม่ใช่รูป ลายนิ้วมือจึงไม่เปลี่ยน
+
+        try:
+            report = merge.apply(plan, {})
+        except ValueError:
+            report = None
+        self.assertEqual((here / "lineups" / note).read_bytes(), b"my note")
+        if report is not None:
+            self.assertEqual(report["copied"], 0)
+            self.assertEqual(len(report["errors"]), 1)
+            self.assertIn(B, report["errors"][0])
+            self.assertFalse((here / "lineups" / B).exists())
+
+    def test_locked_file_is_reported_and_the_rest_still_merges(self) -> None:
+        gif = A.replace(".png", ".gif")
+        here = make_root(self.base, "here", {A: b"a", gif: b"g"})
+        there = make_root(self.base, "there", {A: b"a", gif: b"g", B: b"b"})
+        lib.remove(there, there / "lineups", there / "lineups" / A)
+        put(there, "positions.json", {B: {"from": [0.2, 0.2]}})
+        plan = merge.plan(here, there)
+        real_move = merge.shutil.move
+
+        def move(src, dst, *args, **kwargs):
+            if str(src).endswith("A Main.png"):
+                raise PermissionError("ไฟล์ถูกโปรแกรมหลักเปิดค้างไว้")
+            return real_move(src, dst, *args, **kwargs)
+
+        with mock.patch.object(merge.shutil, "move", side_effect=move):
+            report = merge.apply(plan, {})
+
+        self.assertEqual(report["removed"], 0)
+        self.assertEqual(len(report["errors"]), 1)
+        self.assertTrue(report["errors"][0].startswith(A))
+        self.assertTrue((here / "lineups" / A).is_file())
+        self.assertTrue((here / "lineups" / gif).is_file(), "ของพ่วงที่ย้ายไปแล้วต้องกลับที่เดิม")
+        self.assertEqual(report["copied"], 1)
+        self.assertEqual(get(here, "positions.json"), {B: {"from": [0.2, 0.2]}})
+        self.assertIn(A, [e["old"] for e in journal.load(here)])
+
+    def test_gap_fill_is_not_a_conflict(self) -> None:
+        here = make_root(self.base, "here", {A: b"a"})
+        there = make_root(self.base, "there", {A: b"a"})
+        put(here, "positions.json", {A: {"from": [0.1, 0.1]}})
+        put(there, "positions.json", {A: {"from": [0.1, 0.1], "to": [0.5, 0.5]}})
+        put(here, "callouts.json", {"ascent": {"a-main": {"label": "A Main", "xy": None}}})
+        put(there, "callouts.json", {"ascent": {"a-main": {"label": "A Main", "xy": [0.2, 0.2]}}})
+
+        plan, report = run(here, there)
+
+        self.assertEqual(plan["conflicts"], [])
+        self.assertEqual((report["positions"], report["callouts"]), (1, 1))
+        self.assertEqual(get(here, "positions.json")[A], {"from": [0.1, 0.1], "to": [0.5, 0.5]})
+        self.assertEqual(get(here, "callouts.json")["ascent"]["a-main"]["xy"], [0.2, 0.2])
+
+    def test_find_candidates_survives_broken_config(self) -> None:
+        here = make_root(self.base, "here", {A: b"a"})
+        broken = make_root(self.base, "broken", {A: b"a"})
+        (broken / "config.yaml").write_text("lineups_dir: [\n", encoding="utf-8")
+        good = make_root(self.base, "good", {A: b"a"})
+        found = merge.find_candidates([self.base], exclude=here)
+        self.assertEqual([c["path"] for c in found], [str(good.resolve())])
+
+    def test_plan_refuses_the_same_lineups_folder(self) -> None:
+        here = make_root(self.base, "here", {A: b"a"})
+        there = self.base / "there"
+        there.mkdir()
+        (there / "config.yaml").write_text("lineups_dir: ../here/lineups\n", encoding="utf-8")
+        with self.assertRaises(ValueError):
+            merge.plan(here, there)
+
+    def test_trash_folder_is_never_reused(self) -> None:
+        here = make_root(self.base, "here", {A: b"mine"})
+        there = make_root(self.base, "there", {A: b"theirs"})
+        old_bin = here / ".trash" / "20260925-120000-merge"
+        (old_bin / Path(A).parent).mkdir(parents=True)
+        (old_bin / A).write_bytes(b"older")
+        plan = merge.plan(here, there)
+        real = merge.datetime
+        with mock.patch.object(merge, "datetime") as clock:
+            clock.now.return_value = real(2026, 9, 25, 12, 0, 0)
+            clock.fromtimestamp = real.fromtimestamp
+            report = merge.apply(plan, {"take_there": [plan["conflicts"][0]["id"]]})
+
+        self.assertEqual((old_bin / A).read_bytes(), b"older")
+        self.assertTrue(report["trash"].endswith("20260925-120000-merge-2"))
+        self.assertEqual((Path(report["trash"]) / A).read_bytes(), b"mine")
 
 
 if __name__ == "__main__":
