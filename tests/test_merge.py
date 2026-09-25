@@ -530,7 +530,7 @@ class MergeTest(unittest.TestCase):
     def test_standalone_gif_remove_rename_replace(self) -> None:
         G = "ascent/attack/sova/A/G.gif"
         H = "ascent/attack/sova/A/H.gif"
-        # ลบ: จำลองฝั่งโน้นด้วยบันทึกตรงๆ (library.remove เองก็ยังพังกับ gif เดี่ยว — นอกขอบเขตไฟล์นี้)
+        # ลบ: จำลองฝั่งโน้นด้วยบันทึกตรงๆ (library.remove กับ gif เดี่ยวทดสอบใน test_journal.py)
         here = make_root(self.base, "h1", {A: b"a", G: b"g"})
         there = make_root(self.base, "t1", {A: b"a"})
         journal.save(there, [{"old": G, "new": None, "at": "2026-09-02T10:00:00"}])
@@ -728,11 +728,10 @@ class MergeTest(unittest.TestCase):
         self.assertEqual(get(here, "positions.json"), {new_rel: {"from": [0.6, 0.6]}})
         self.assertEqual(get(here, "meta.json"), {A: {"tags": ["mine"]}})
 
+        # เก็บทั้งคู่แล้วจดลงบันทึก → รอบหน้าเป็นชื่อแทน ไม่ถามซ้ำ (F3)
         plan = merge.plan(here, there)
-        image = next(c for c in plan["conflicts"] if c["key"] == A)
-        report = merge.apply(plan, {"take_there": [image["id"]]})
-        self.assertEqual(report["replaced"], 1)
-        self.assertEqual((here / "lineups" / A).read_bytes(), b"theirs")
+        self.assertEqual(plan["conflicts"], [])
+        self.assertEqual(plan["alias"], {A: new_rel})
 
     def test_image_conflict_default_is_the_newer_file(self) -> None:
         here = make_root(self.base, "here", {A: b"mine"})
@@ -936,6 +935,222 @@ class MergeTest(unittest.TestCase):
         self.assertEqual((old_bin / A).read_bytes(), b"older")
         self.assertTrue(report["trash"].endswith("20260925-120000-merge-2"))
         self.assertEqual((Path(report["trash"]) / A).read_bytes(), b"mine")
+
+    # -- รอบแก้สุดท้าย (รีวิวทั้งกิ่ง) ---------------------------------------------------
+    def test_sidecar_only_there_is_added_to_matched_image(self) -> None:          # F1
+        note, gif, md = (A.replace(".png", s) for s in (".txt", ".gif", ".md"))
+        here = make_root(self.base, "here", {A: b"a", md: b"my md"})
+        there = make_root(self.base, "there", {A: b"a", note: b"their note", gif: b"clip"})
+        before = tree_hash(there)
+
+        plan = merge.plan(here, there)
+
+        self.assertEqual(sorted((s["rel"], s["suffix"]) for s in plan["sidecars"]),
+                         [(A, ".gif"), (A, ".txt")])
+        self.assertTrue(all(isinstance(s["id"], int) for s in plan["sidecars"]))
+        self.assertEqual(plan["counts"]["sidecars"], 2)
+        self.assertEqual(plan["conflicts"], [])
+
+        report = merge.apply(plan, {})
+
+        self.assertEqual((report["sidecars"], report["errors"]), (2, []))
+        self.assertEqual((here / "lineups" / note).read_bytes(), b"their note")
+        self.assertEqual((here / "lineups" / gif).read_bytes(), b"clip")
+        self.assertEqual((here / "lineups" / md).read_bytes(), b"my md", "ของพ่วงที่มีแค่ที่นี่ต้องอยู่")
+        self.assertEqual(tree_hash(there), before)
+        self.assertEqual(merge.plan(here, there)["sidecars"], [])
+
+    def test_sidecar_follows_rename_and_alias(self) -> None:                     # F1
+        # อีกเครื่องเปลี่ยนชื่อแล้วค่อยเขียนโน้ต → โน้ตต้องมาอยู่ข้างใบที่เปลี่ยนชื่อตามแล้ว
+        here = make_root(self.base, "here", {A: b"a"})
+        there = make_root(self.base, "there", {A: b"a"})
+        new = lib.rename(there, there / "lineups", there / "lineups" / A, "A Main Fast").path
+        new.with_suffix(".txt").write_bytes(b"note after rename")
+        new_rel = lib.rel_of(there / "lineups", new)
+
+        plan, report = run(here, there)
+
+        self.assertEqual([(s["rel"], s["suffix"]) for s in plan["sidecars"]], [(new_rel, ".txt")])
+        self.assertEqual(report["errors"], [])
+        self.assertEqual((here / "lineups" / new_rel).with_suffix(".txt").read_bytes(),
+                         b"note after rename")
+
+        # ที่นี่เปลี่ยนชื่อไปแล้ว (alias) → gif ของอีกเครื่องไปอยู่ข้างชื่อใหม่ของที่นี่
+        here = make_root(self.base, "here2", {A: b"a"})
+        there = make_root(self.base, "there2", {A: b"a", A.replace(".png", ".gif"): b"clip"})
+        mine = lib.rename(here, here / "lineups", here / "lineups" / A, "A Main Y").path
+
+        plan, report = run(here, there)
+
+        self.assertEqual([(s["rel"], s["suffix"]) for s in plan["sidecars"]], [(A, ".gif")])
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(mine.with_suffix(".gif").read_bytes(), b"clip")
+        self.assertFalse((here / "lineups" / A).with_suffix(".gif").exists())
+
+    def test_sidecar_conflict_follows_newer_and_trashes_ours(self) -> None:      # F1
+        note, gif = A.replace(".png", ".txt"), A.replace(".png", ".gif")
+        here = make_root(self.base, "here", {A: b"a", note: b"mine", gif: b"my clip"})
+        there = make_root(self.base, "there", {A: b"a", note: b"theirs", gif: b"their clip"})
+        now = (here / "lineups" / note).stat().st_mtime
+        os.utime(there / "lineups" / note, (now + 60, now + 60))
+        os.utime(there / "lineups" / gif, (now - 60, now - 60))
+        before = tree_hash(there)
+
+        plan = merge.plan(here, there)
+
+        got = {c["kind"]: c for c in plan["conflicts"]}
+        self.assertEqual(sorted(got), ["gif", "note"])
+        self.assertEqual((got["note"]["suffix"], got["note"]["newer"], got["note"]["default"]),
+                         (".txt", "there", "there"))
+        self.assertEqual((got["gif"]["suffix"], got["gif"]["newer"], got["gif"]["default"]),
+                         (".gif", "here", "here"))
+        self.assertNotEqual(got["note"]["key"], got["gif"]["key"])
+        self.assertEqual(plan["sidecars"], [])
+
+        # เก็บทั้งคู่ใช้กับของพ่วงไม่ได้ — ไม่สนใจ
+        report = merge.apply(plan, {"take_there": [got["note"]["id"]],
+                                    "keep_both": [got["gif"]["id"]]})
+
+        self.assertEqual(report["errors"], [])
+        self.assertEqual((here / "lineups" / note).read_bytes(), b"theirs")
+        self.assertEqual((here / "lineups" / gif).read_bytes(), b"my clip")
+        self.assertEqual([p.read_bytes() for p in Path(report["trash"]).rglob("A Main.txt")],
+                         [b"mine"])
+        self.assertEqual(len(merge.images(here)), 1)
+        self.assertEqual(tree_hash(there), before)
+
+    def test_lone_gif_matched_image_is_not_its_own_sidecar(self) -> None:        # F1
+        G = "ascent/attack/sova/A/G.gif"
+        here = make_root(self.base, "here", {G: b"g"})
+        there = make_root(self.base, "there", {G: b"g", G.replace(".gif", ".txt"): b"n"})
+
+        plan, report = run(here, there)
+
+        self.assertEqual([(s["rel"], s["suffix"]) for s in plan["sidecars"]], [(G, ".txt")])
+        self.assertEqual(plan["conflicts"], [])
+        self.assertEqual(report["errors"], [])
+        self.assertEqual((here / "lineups" / G.replace(".gif", ".txt")).read_bytes(), b"n")
+
+    def test_untrusted_clock_defaults_to_here(self) -> None:                     # F2
+        files = {f"ascent/attack/sova/B/b{i}.png": f"{i}".encode() for i in range(10)}
+        note = "ascent/attack/sova/B/b0.txt"             # โน้ตของรูปที่ตรงกันทั้งสองฝั่ง
+        here = make_root(self.base, "here", {**files, A: b"mine", note: b"my note"})
+        there = make_root(self.base, "there", {**files, A: b"theirs", note: b"their note"})
+        day = 86400
+        start = (here / "lineups" / A).stat().st_mtime - 30 * day
+        for i, rel in enumerate(sorted(files) + [A]):
+            os.utime(here / "lineups" / rel, (start + i * day, start + i * day))
+        os.utime(here / "lineups" / note, (start, start))
+        # อีกฝั่งแตกจาก zip: ทุกไฟล์เวลาเดียวกันหมด (และใหม่กว่า)
+        for path in (there / "lineups").rglob("*"):
+            if path.is_file():
+                os.utime(path, (start + 40 * day, start + 40 * day))
+
+        plan = merge.plan(here, there)
+
+        self.assertEqual(plan["clock"], {"here": True, "there": False})
+        got = {c["kind"]: c for c in plan["conflicts"]}
+        self.assertEqual(sorted(got), ["image", "note"])
+        for kind in ("image", "note"):
+            self.assertEqual((got[kind]["newer"], got[kind]["default"]), ("unknown", "here"))
+
+        # สองฝั่งเวลากระจายปกติ → เชื่อเวลา ค่าเริ่มต้นกลับไปเป็นอันที่ใหม่กว่า
+        for i, rel in enumerate(sorted(files) + [A, note]):
+            os.utime(there / "lineups" / rel, (start + (i + 5) * day, start + (i + 5) * day))
+        plan = merge.plan(here, there)
+        self.assertEqual(plan["clock"], {"here": True, "there": True})
+        self.assertEqual([c["default"] for c in plan["conflicts"] if c["kind"] == "image"],
+                         ["there"])
+
+    def test_small_library_clock_is_trusted(self) -> None:                       # F2
+        here = make_root(self.base, "here", {A: b"a", B: b"b"})
+        there = make_root(self.base, "there", {A: b"a", B: b"b", C: b"c"})
+        self.assertEqual(merge.plan(here, there)["clock"], {"here": True, "there": True})
+
+    def test_keep_both_converges_on_the_round_trip(self) -> None:                # F3
+        a_side = make_root(self.base, "pc-a", {A: b"a-version"})
+        b_side = make_root(self.base, "pc-b", {A: b"b-version"})
+        put(a_side, "meta.json", {A: {"tags": ["from-a"]}})
+        put(b_side, "meta.json", {A: {"tags": ["from-b"]}})
+
+        def defaults(plan: dict) -> dict:
+            return {"take_there": [c["id"] for c in plan["conflicts"] if c["default"] == "there"]}
+
+        def contents(root: Path) -> list[bytes]:
+            return sorted(p.read_bytes() for p in merge.images(root).values())
+
+        plan = merge.plan(a_side, b_side)
+        image = next(c for c in plan["conflicts"] if c["kind"] == "image")
+        report = merge.apply(plan, {"keep_both": [image["id"]]})
+        self.assertEqual((report["kept_both"], report["errors"]), (1, []))
+        kept = next(r for r, p in merge.images(a_side).items() if p.read_bytes() == b"b-version")
+        self.assertIn((A, kept), [(e["old"], e["new"]) for e in journal.load(a_side)])
+
+        # รอบหน้าของเครื่องนี้กับโฟลเดอร์เดิม: เป็นชื่อแทน ไม่ถามซ้ำ
+        again = merge.plan(a_side, b_side)
+        self.assertEqual((again["conflicts"], again["copy"], again["ask"]), ([], [], []))
+        self.assertEqual(again["alias"].get(A), kept)
+
+        # อีกเครื่องรวมของที่อัปโหลดไป ด้วยค่าเริ่มต้น
+        plan = merge.plan(b_side, a_side)
+        self.assertEqual([c for c in plan["conflicts"] if c["kind"] == "image"], [])
+        report = merge.apply(plan, defaults(plan))
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(contents(a_side), [b"a-version", b"b-version"])
+        self.assertEqual(contents(b_side), [b"a-version", b"b-version"])
+        self.assertEqual((b_side / "lineups" / kept).read_bytes(), b"b-version")
+        self.assertEqual((b_side / "lineups" / A).read_bytes(), b"a-version")
+        trashed = [p for p in (b_side / ".trash").rglob("*")
+                   if p.is_file() and p.suffix.lower() in (".png", ".jpg", ".gif")]
+        self.assertEqual(trashed, [], "ของอีกเครื่องเองต้องไม่เข้าถัง")
+        self.assertEqual(get(b_side, "meta.json")[kept], {"tags": ["from-b"]})
+        self.assertEqual(get(b_side, "meta.json")[A], {"tags": ["from-a"]})
+
+        for mine, theirs in ((a_side, b_side), (b_side, a_side)):
+            plan = merge.plan(mine, theirs)
+            self.assertEqual((plan["conflicts"], plan["copy"], plan["ask"],
+                              plan["rename_here"], plan["remove_here"]), ([], [], [], [], []))
+
+    def test_tail_write_failures_are_reported_not_raised(self) -> None:         # F4
+        here = make_root(self.base, "here", {A: b"a"})
+        there = make_root(self.base, "there", {A: b"a", B: b"b"})
+        (there / "capture.json").write_text("{}", encoding="utf-8")
+        plan = merge.plan(here, there)
+
+        def boom(*_args, **_kwargs):
+            raise PermissionError("ล็อกอยู่")
+
+        real_copy = merge.shutil.copy2
+
+        def copy2(src, dst, *args, **kwargs):
+            if Path(src).name == "capture.json":
+                raise PermissionError("ล็อกอยู่")
+            return real_copy(src, dst, *args, **kwargs)
+
+        with mock.patch.object(merge.pos_mod, "save", return_value=False), \
+                mock.patch.object(merge, "_write", side_effect=boom), \
+                mock.patch.object(merge.journal, "save", return_value=False), \
+                mock.patch.object(merge.shutil, "copy2", side_effect=copy2):
+            report = merge.apply(plan, {"machine": "there"})
+
+        self.assertEqual(report["copied"], 1)
+        self.assertTrue((here / "lineups" / B).is_file())
+        self.assertTrue(Path(report["trash"]).is_dir())
+        joined = "\n".join(report["errors"])
+        for name in ("positions.json", "browse.json", "last-view.json", "capture.json",
+                     journal.FILE):
+            self.assertIn(name, joined)
+
+    def test_meta_count_includes_merged_fields(self) -> None:                   # F9
+        here = make_root(self.base, "here", {A: b"a", C: b"c"})
+        there = make_root(self.base, "there", {A: b"a", C: b"c", B: b"b"})
+        put(here, "meta.json", {A: {"tags": ["x"]}, C: {"tags": ["z"]}})
+        put(there, "meta.json", {A: {"tags": ["y"], "fav": True}, B: {"tags": ["new"]},
+                                 C: {"tags": ["z"]}})
+
+        plan, report = run(here, there)
+
+        self.assertEqual((plan["counts"]["meta"], report["meta"]), (2, 2))
 
 
 if __name__ == "__main__":

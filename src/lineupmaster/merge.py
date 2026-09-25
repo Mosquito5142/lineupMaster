@@ -50,6 +50,10 @@ _FINGERPRINT_FILES = tuple(n for n in (*DATA_FILES, *MACHINE_FILES, *CONFIG_FILE
 # นามสกุลทุกแบบที่ผูกกับชื่อไลน์อัพหนึ่งตัว (รูป + ของพ่วง) — ใช้ดูว่า "ช่องชื่อ" นี้ว่างไหม
 _SLOT_SUFFIXES = tuple(sorted(IMAGE_SUFFIXES | set(lib.SIDECAR_SUFFIXES)))
 STALE = "คลังเปลี่ยนไประหว่างดูสรุป — กดดูสรุปใหม่อีกครั้งก่อนรวม"
+# เวลาไฟล์เชื่อไม่ได้ (ดู _clock_trusted): รูปอย่างน้อยเท่านี้ · กองในช่วงกี่วินาที · กี่ส่วน
+CLOCK_MIN_IMAGES, CLOCK_WINDOW, CLOCK_SHARE = 10, 600, 0.8
+# ของพ่วงที่ขัดกัน: โน้ตกับคลิปเป็นคนละชนิด หน้าเว็บจะได้บอกถูก
+SIDECAR_KIND = {".txt": "note", ".md": "note", ".gif": "gif"}
 
 Take = Callable[[str, str], bool]
 
@@ -167,6 +171,20 @@ def _newer(mine: Path, theirs: Path) -> str:
     return "there" if diff > 2 else "here" if diff < -2 else "same"
 
 
+def _clock_trusted(paths) -> bool:
+    """เวลาแก้ไฟล์ของโฟลเดอร์นี้เชื่อได้ไหม — โหลดจาก Drive บนเว็บ (zip) แล้วแตก เวลาทุกไฟล์กลายเป็น
+    เวลาที่แตก: รูปตั้งแต่ 10 ใบขึ้นไปที่ 80% กองอยู่ในช่วง 10 นาทีเดียวกัน = เชื่อไม่ได้."""
+    stamps = sorted(path.stat().st_mtime for path in paths)
+    if len(stamps) < CLOCK_MIN_IMAGES:
+        return True
+    start = most = 0
+    for end, stamp in enumerate(stamps):
+        while stamp - stamps[start] > CLOCK_WINDOW:
+            start += 1
+        most = max(most, end - start + 1)
+    return most < CLOCK_SHARE * len(stamps)
+
+
 def _is_image_key(key: str) -> bool:
     return Path(key).suffix.lower() in IMAGE_SUFFIXES
 
@@ -243,6 +261,8 @@ def merge_data(here: dict, there: dict, rename: Callable[[str], str],
             conflicts.append(("ability", key, clash[0], clash[1]))
             if take("ability", key):
                 merged["ability"] = clash[1]
+        if merged != meta[key]:           # ได้แท็ก/ไม้ตาย/จำนวนซ้อม/สกิลเพิ่ม ก็นับเป็นใบที่ได้ของเพิ่ม
+            added["meta"] += 1
         meta[key] = merged
 
     callouts = {map_: dict(entries) for map_, entries in here["callouts"].items()}
@@ -378,6 +398,16 @@ class _Sides:
         self.there_own = [e for e in there_log if journal.key(e) not in shared]
         self.here_trash, self.there_trash = trashed(here), trashed(there)
         self._trash_hash: dict[Path, str] = {}
+        self.clock = {"here": _clock_trusted(self.here_img.values()),
+                      "there": _clock_trusted(self.there_img.values())}
+
+    def newer(self, mine: Path, theirs: Path) -> tuple[str, str]:
+        """``(ฝั่งที่ใหม่กว่า, ค่าเริ่มต้น)`` ของไฟล์ที่ขัดกัน — ผู้ใช้เลือกไว้ว่า "เอาอันล่าสุด"
+        แต่ถ้าเวลาไฟล์ฝั่งไหนเชื่อไม่ได้ ตัดสินจากเวลาไม่ได้ → เก็บของที่นี่ไว้ก่อน ให้ดูแล้วเลือกเอง"""
+        if not all(self.clock.values()):
+            return "unknown", "here"
+        newer = _newer(mine, theirs)
+        return newer, "there" if newer == "there" else "here"
 
     def in_trash(self, trash: dict[str, list[Path]], names, digest: str) -> bool | None:
         """ถังมีสำเนาใต้ชื่อใดชื่อหนึ่งใน ``names`` ที่เนื้อตรงกับ ``digest`` ไหม — ไม่มีสำเนาเลยคืน None.
@@ -532,10 +562,9 @@ def _there_new(s: _Sides, out: dict, ids, here_after: dict, done: set) -> None:
         if rel in here_after:
             mine = s.here_img[here_after[rel]]
             if s.here_hash[here_after[rel]] != s.there_hash[rel]:
-                newer = _newer(mine, path)
+                newer, default = s.newer(mine, path)
                 out["conflicts"].append({"id": next(ids), "kind": "image", "key": rel,
-                                         "default": "there" if newer == "there" else "here",
-                                         "newer": newer,
+                                         "default": default, "newer": newer,
                                          "here": _file_info(mine), "there": _file_info(path)})
                 out["hold"].append(rel)
             continue
@@ -569,6 +598,48 @@ def _there_new(s: _Sides, out: dict, ids, here_after: dict, done: set) -> None:
             out["copy"].append({"id": next(ids), "rel": rel})
 
 
+def _side_info(path: Path, suffix: str) -> dict:
+    """ขนาด/เวลาของของพ่วง — โน้ตแนบข้อความต้นๆ ไปด้วย ผู้ใช้จะได้เลือกจากเนื้อหา ไม่ใช่แค่เวลา."""
+    info = _file_info(path)
+    if suffix != ".gif":
+        try:
+            info["text"] = path.read_text(encoding="utf-8", errors="replace")[:300]
+        except OSError:
+            pass
+    return info
+
+
+def _sidecars(s: _Sides, out: dict, ids) -> None:
+    """ขั้น 3.5: ของพ่วง (โน้ต/gif) ของรูปที่จับคู่กันได้แล้ว — ชื่อ+เนื้อตรงกัน หรือเนื้อตรงกันผ่าน
+    การเปลี่ยนชื่อ/ชื่อแทน · โน้ตหรือ gif ที่อีกเครื่องเพิ่มให้ไลน์อัพเดิมต้องไม่หายเงียบๆ.
+
+    มีแค่ที่โน่น → ก๊อปมาวางข้างรูปของที่นี่ (ไม่ทับ) · มีทั้งคู่แต่ต่างกัน → ขัดกัน (ค่าเริ่มต้น =
+    อันที่ใหม่กว่า แบบเดียวกับรูป) · มีแค่ที่นี่ → เก็บไว้
+    """
+    # (rel ของ THERE, rel เดิมของ HERE, rel ของ HERE หลังทำตามแผน)
+    pairs = [(rel, rel, rel) for rel in sorted(s.identical)]
+    pairs += [(r["new"], r["old"], r["new"]) for r in out["rename_here"]]
+    pairs += [(rel, mine, mine) for rel, mine in sorted(out["alias"].items())]
+    for there_rel, here_rel, after in pairs:
+        theirs, mine = s.there_img[there_rel], s.here_img[here_rel]
+        # gif เดี่ยวเป็นตัวรูปเอง ไม่ใช่ของพ่วง — ห้ามก๊อป/เทียบทับตัวรูปของอีกฝั่ง
+        own = {theirs.suffix.lower(), mine.suffix.lower()}
+        for side in lib.sidecars(theirs):
+            suffix = side.suffix.lower()
+            if suffix in own:
+                continue
+            here_side = mine.with_suffix(suffix)
+            if not here_side.is_file():
+                out["sidecars"].append({"id": next(ids), "rel": there_rel, "suffix": suffix})
+            elif not _same(here_side, side):
+                newer, default = s.newer(here_side, side)
+                out["conflicts"].append({
+                    "id": next(ids), "kind": SIDECAR_KIND[suffix],
+                    "key": str(PurePosixPath(after).with_suffix(suffix)),
+                    "rel": there_rel, "suffix": suffix, "default": default, "newer": newer,
+                    "here": _side_info(here_side, suffix), "there": _side_info(side, suffix)})
+
+
 def plan(here: Path, there: Path) -> dict:
     """ดูว่าจะรวมอะไรบ้าง — **อ่านอย่างเดียว** ไม่แตะไฟล์ทั้งสองฝั่ง."""
     here, there = Path(here).resolve(), Path(there).resolve()
@@ -586,7 +657,8 @@ def plan(here: Path, there: Path) -> dict:
     out: dict = {
         "here": str(here), "there": str(there), "fingerprint": fingerprint,
         "copy": [], "rename_here": [], "remove_here": [], "skipped": [],
-        "alias": {}, "ask": [], "conflicts": [], "hold": [],
+        "alias": {}, "ask": [], "conflicts": [], "hold": [], "sidecars": [],
+        "clock": s.clock,
     }
 
     # 1) เนื้อไฟล์ตรงกันแต่ชื่อต่าง → เปลี่ยนชื่อตามบันทึกของอีกเครื่อง / จำชื่อที่ที่นี่เปลี่ยนไป
@@ -607,6 +679,7 @@ def plan(here: Path, there: Path) -> dict:
     # 2) รูปที่ที่นี่มีแต่อีกเครื่องไม่มีแล้ว  3) รูปใหม่ของอีกเครื่อง
     _here_only(s, out, ids, here_after, used)
     _there_new(s, out, ids, here_after, done)
+    _sidecars(s, out, ids)
 
     # 4) ข้อมูล json — หาของที่ขัดกันและนับของที่จะเพิ่ม (ตามค่าเริ่มต้น)
     moves = {item["old"]: item["new"] for item in out["rename_here"]}
@@ -636,15 +709,15 @@ def plan(here: Path, there: Path) -> dict:
         and not ((here / name).is_file() and _same(here / name, there / name))
     ]
     out["counts"] = {"copy": len(out["copy"]), "rename": len(out["rename_here"]),
-                     "remove": len(out["remove_here"]), **added}
+                     "remove": len(out["remove_here"]), "sidecars": len(out["sidecars"]),
+                     **added}
     return out
 
 
 # -- ย้าย/ก๊อปไฟล์ (รูป + ของพ่วงเป็นก้อนเดียว) ------------------------------------
 def _bundle(image: Path) -> list[Path]:
-    """ของพ่วงก่อน ตัวรูปท้ายสุด — ``library.sidecars`` นับ ``X.gif`` เป็นของพ่วงของตัวเองด้วย
-    ถ้ารูปคือ gif เดี่ยว จึงต้องตัดตัวรูปออกก่อน ไม่งั้นย้ายซ้ำสองรอบแล้วพัง"""
-    return [side for side in lib.sidecars(image) if side != image] + [image]
+    """ของพ่วงก่อน ตัวรูปท้ายสุด (``library.sidecars`` ไม่นับตัวรูปเอง gif เดี่ยวจึงไม่ซ้ำ)."""
+    return [*lib.sidecars(image), image]
 
 
 def _pairs(src: Path, dst: Path) -> list[tuple[Path, Path]]:
@@ -745,6 +818,38 @@ def _replace(base_here: Path, base_there: Path, key: str, bin_dir: Path) -> None
         raise
 
 
+def _add_side(src: Path, dst: Path) -> None:
+    """ก๊อปของพ่วงหนึ่งไฟล์มาวางข้างรูปของที่นี่ — มีไฟล์อยู่แล้วไม่ทับ."""
+    if dst.exists():
+        raise FileExistsError(f"มีไฟล์ชื่อนี้อยู่แล้ว ไม่เขียนทับ: {dst.name}")
+    shutil.copy2(src, dst)
+
+
+def _swap_side(src: Path, dst: Path, base: Path, bin_dir: Path) -> None:
+    """แทนของพ่วงของที่นี่ด้วยของโน่น: ของเดิมเข้าถังก่อน ก๊อปไม่สำเร็จเอาของเดิมกลับ."""
+    spare = bin_dir / lib.rel_of(base, dst)
+    if not dst.is_file():                 # ของที่นี่หายไปเองแล้ว ไม่มีอะไรต้องเก็บ
+        _add_side(src, dst)
+        return
+    if spare.exists():
+        raise FileExistsError(f"ในถังมีไฟล์ชื่อนี้อยู่แล้ว: {spare.name}")
+    spare.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(dst), spare)
+    try:
+        shutil.copy2(src, dst)
+    except OSError:
+        if dst.exists():                  # ก๊อปค้างครึ่งทาง: เก็บเข้า _partial ไม่ลบทิ้ง
+            try:
+                partial = bin_dir / "_partial" / lib.rel_of(base, dst)
+                partial.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(dst), partial)
+            except OSError:
+                pass
+        if not dst.exists():
+            shutil.move(str(spare), dst)
+        raise
+
+
 def _new_bin(here: Path) -> Path:
     """ถังของรอบนี้ — ชื่อซ้ำกับรอบก่อน (กดรวมสองทีในวินาทีเดียว) ต่อท้าย -2, -3 … ไม่ใช้ถังเดิมซ้ำ."""
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S") + "-merge"
@@ -777,7 +882,11 @@ def _jobs(plan_: dict, ticked: set, take_ids: set, both_ids: set) -> dict:
     """รวบงานไฟล์ทั้งหมดของรอบนี้ (ตามแผน + ที่ผู้ใช้เลือก) ไว้ตรวจก่อนลงมือ."""
     asks = [a for a in plan_["ask"] if a["id"] in ticked]
     images_ = [c for c in plan_["conflicts"] if c["kind"] == "image"]
+    sides = [c for c in plan_["conflicts"] if c["kind"] in ("note", "gif")]
     return {
+        # ของพ่วงของรูปที่จับคู่แล้ว (rel ของ THERE, นามสกุล, แทนของที่นี่ไหม) — "เก็บทั้งคู่" ใช้ไม่ได้
+        "sidecars": [(s["rel"], s["suffix"], False) for s in plan_.get("sidecars") or []]
+                    + [(c["rel"], c["suffix"], True) for c in sides if c["id"] in take_ids],
         # (old, new, รายการบันทึกเบื้องหลัง)
         "rename": [(r["old"], r["new"], r.get("chain") or []) for r in plan_["rename_here"]],
         # (rel, จดลงบันทึกไหม, รายการบันทึกเบื้องหลัง) — ที่ลบตามบันทึกของอีกเครื่องไม่ต้องจดซ้ำ
@@ -801,14 +910,20 @@ def _check_sources(jobs: dict, base_here: Path, base_there: Path) -> None:
     need += [base_there / rel for rel, _near in jobs["copy"]]
     need += [base_there / key for key in jobs["keep_both"]]
     need += [base for key in jobs["replace"] for base in (base_here / key, base_there / key)]
+    need += [(base_there / rel).with_suffix(suffix) for rel, suffix, _take in jobs["sidecars"]]
     if not all(path.is_file() for path in need):
         raise ValueError(STALE)
 
 
 def _attempt(report: dict, rel: str, action: Callable, *args) -> bool:
-    """ทำงานไฟล์หนึ่งชิ้น — พังก็จดลง ``report["errors"]`` แล้วไปชิ้นต่อไป (ไม่ทิ้งงานที่เหลือกลางทาง)."""
+    """ทำงานไฟล์หนึ่งชิ้น — พังก็จดลง ``report["errors"]`` แล้วไปชิ้นต่อไป (ไม่ทิ้งงานที่เหลือกลางทาง).
+
+    ตัวเขียน json บางตัว (``positions.save`` ฯลฯ) ไม่ raise แต่คืน ``False`` — ถือว่าพังเหมือนกัน
+    """
     try:
-        action(*args)
+        if action(*args) is False:
+            report["errors"].append(f"{rel}: เขียนไฟล์ไม่สำเร็จ")
+            return False
         return True
     except OSError as exc:
         report["errors"].append(f"{rel}: {exc}")
@@ -849,6 +964,7 @@ class _Run:
         self.replaced: set[str] = set()
         self.unplayed: set[tuple] = set()  # รายการบันทึกของ THERE ที่ทำไม่สำเร็จ ห้ามรวม
         self.report = {"copied": 0, "renamed": 0, "removed": 0, "replaced": 0, "kept_both": 0,
+                       "sidecars": 0, "sidecars_replaced": 0,
                        "trash": str(bin_dir), "errors": []}
 
     def renames(self, here: Path, jobs: list) -> None:
@@ -877,23 +993,42 @@ class _Run:
             else:
                 self.unplayed |= {tuple(entry) for entry in chain}
 
-    def copy(self, rel: str, near: str | None, counter: str) -> bool:
-        """ก๊อปหนึ่งใบ (ชื่อเดิม หรือชื่อว่างข้างๆ ``near``) แล้วชี้ข้อมูลของ THERE ไปชื่อจริงบนดิสก์."""
+    def copy(self, rel: str, near: str | None, counter: str) -> str | None:
+        """ก๊อปหนึ่งใบ (ชื่อเดิม หรือชื่อว่างข้างๆ ``near``) แล้วชี้ข้อมูลของ THERE ไปชื่อจริงบนดิสก์.
+
+        คืนชื่อจริงบนดิสก์ที่ก๊อปไปวาง (ไม่สำเร็จคืน None)
+        """
         try:
             dst_rel = _free_rel(self.base_here, near, rel) if near else rel
         except OSError as exc:
             self.report["errors"].append(f"{rel}: {exc}")
             self.blocked.add(rel)
-            return False
+            return None
         if not _attempt(self.report, rel, _copy_in, self.base_there, self.base_here, rel,
                         dst_rel, self.bin_dir):
             self.blocked.add(rel)
-            return False
+            return None
         self.report[counter] += 1
         real = _on_disk(self.base_here, dst_rel)
         if real != rel:
             self.alias[rel] = real              # ข้อมูลของ THERE ตามไปชื่อใหม่
-        return True
+        return real
+
+    def sidecar(self, rel: str, suffix: str, take: bool) -> None:
+        """ของพ่วงของรูปที่จับคู่แล้ว: ก๊อปมาวางข้างรูปของที่นี่ (ชื่อหลังเปลี่ยนชื่อ/ชื่อแทนแล้ว) หรือ
+        แทนของที่นี่ (ของเดิมเข้าถัง) — รูปของที่นี่อยู่ไหนดูจาก ``alias`` ที่อัปเดตตามงานจริงแล้ว."""
+        mine = self.base_here / self.alias.get(rel, rel)
+        src = (self.base_there / rel).with_suffix(suffix)
+        dst = mine.with_suffix(suffix)
+        label = lib.rel_of(self.base_here, dst)
+        if not mine.is_file():
+            self.report["errors"].append(f"{label}: ไม่เจอรูปของที่นี่ให้วางของพ่วงข้างๆ")
+            return
+        if take:
+            if _attempt(self.report, label, _swap_side, src, dst, self.base_here, self.bin_dir):
+                self.report["sidecars_replaced"] += 1
+        elif _attempt(self.report, label, _add_side, src, dst):
+            self.report["sidecars"] += 1
 
     def replace(self, key: str) -> None:
         if _attempt(self.report, key, _replace, self.base_here, self.base_there, key,
@@ -945,8 +1080,15 @@ def apply(plan_: dict, choices: dict) -> dict:
         run.replace(key)
     for key in jobs["keep_both"]:
         # ก๊อปของ THERE มาเป็นอีกใบข้างๆ แล้วปล่อยข้อมูลที่พักไว้ให้ตามใบใหม่ไป
-        if run.copy(key, key, "kept_both"):
+        real = run.copy(key, key, "kept_both")
+        if real:
             run.lifted.add(key)
+            # จดว่า "X ของโน่น = X (2) ของที่นี่" ให้สองทางลงรอยกัน: รอบหน้าที่นี่เห็นเป็นชื่อแทน
+            # (ไม่ถามซ้ำ) และอีกเครื่องที่รวมของที่นี่กลับไปจะเปลี่ยนชื่อ X ของตัวเองเป็น X (2) ตาม
+            # แล้วก๊อป X ของที่นี่ไป — ของทั้งสองใบอยู่ครบทั้งสองเครื่อง
+            journal.record(here, key, real)
+    for rel, suffix, take_side in jobs["sidecars"]:
+        run.sidecar(rel, suffix, take_side)
 
     present = set(images(here))
     take = {(c["kind"], c["key"]) for c in plan_["conflicts"] if c["id"] in take_ids}
@@ -960,26 +1102,31 @@ def apply(plan_: dict, choices: dict) -> dict:
         lambda kind, key: (kind, key) in take)
     _take_held(merged, there_data, run.replaced)
 
+    # เขียนตอนท้ายทุกชิ้นผ่าน _attempt: ไฟล์ถูกย้าย/ก๊อปไปแล้ว ถ้าเขียน json ชิ้นไหนพังต้องยังคืน
+    # รายงาน (พร้อมที่อยู่ถังที่มี json เดิมสำรองไว้) ไม่ใช่โยน error ทิ้งกลางทาง
+    report = run.report
     if machine == "there":
         for key in MACHINE_VIEW_KEYS:
             if key in there_data["view"]:
                 merged["view"][key] = there_data["view"][key]
         for name in MACHINE_FILES:
             if (there / name).is_file():
-                shutil.copy2(there / name, here / name)
+                _attempt(report, name, shutil.copy2, there / name, here / name)
 
-    pos_mod.save(here / "positions.json", merged["positions"])
-    meta_mod.save(here / "meta.json", merged["meta"])
-    callout_mod.save(here / "callouts.json", merged["callouts"])
-    _write(here / "browse.json", merged["browse"])
-    _write(here / "last-view.json", merged["view"])
+    _attempt(report, "positions.json", pos_mod.save, here / "positions.json", merged["positions"])
+    _attempt(report, "meta.json", meta_mod.save, here / "meta.json", merged["meta"])
+    _attempt(report, "callouts.json", callout_mod.save, here / "callouts.json",
+             merged["callouts"])
+    _attempt(report, "browse.json", _write, here / "browse.json", merged["browse"])
+    _attempt(report, "last-view.json", _write, here / "last-view.json", merged["view"])
 
     if choices.get("config"):
         for name in plan_["config_differs"]:
-            shutil.copy2(there / name, here / name)
+            _attempt(report, name, shutil.copy2, there / name, here / name)
 
     # รายการที่ทำไม่สำเร็จไม่รวมเข้าบันทึกของที่นี่ — ยังเป็น "ของอีกเครื่อง" รอบหน้าจะได้ทำซ้ำ
     theirs = [e for e in journal.load(there) if journal.key(e) not in run.unplayed]
-    journal.save(here, journal.union(journal.load(here), theirs))
-    run.report.update(added)
-    return run.report
+    _attempt(report, journal.FILE, journal.save, here,
+             journal.union(journal.load(here), theirs))
+    report.update(added)
+    return report
