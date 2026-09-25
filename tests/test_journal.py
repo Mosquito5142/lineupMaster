@@ -65,6 +65,55 @@ class JournalTest(unittest.TestCase):
         b = [{"old": "x", "new": None, "at": "2"}]
         self.assertEqual([e["old"] for e in journal.union(a, b)], ["y", "x"])
 
+    # -- gif เดี่ยว (ไม่มีรูปนิ่งคู่) เป็นไลน์อัพเอง ไม่ใช่ของพ่วงของตัวเอง (F10) ----------
+    def _lone_gif(self) -> tuple[Path, str]:
+        gif = self.lineups / "ascent/attack/sova/A/G.gif"
+        gif.write_bytes(b"gif")
+        gif.with_suffix(".txt").write_bytes(b"note")
+        rel = lib.rel_of(self.lineups, gif)
+        (self.root / "positions.json").write_text(json.dumps({rel: {"from": [0.1, 0.1]}}),
+                                                  encoding="utf-8")
+        return gif, rel
+
+    def _positions(self) -> dict:
+        return json.loads((self.root / "positions.json").read_text(encoding="utf-8"))
+
+    def test_sidecars_exclude_the_image_itself(self) -> None:
+        gif, _rel = self._lone_gif()
+        self.assertEqual(lib.sidecars(gif), [gif.with_suffix(".txt")])
+        # นามสกุลตัวใหญ่ (G.GIF) ก็คือไฟล์เดียวกันบน Windows
+        self.assertEqual([p.name for p in lib.sidecars(gif.with_name("G.GIF"))], ["G.txt"])
+
+    def test_lone_gif_remove(self) -> None:
+        gif, rel = self._lone_gif()
+        result = lib.remove(self.root, self.lineups, gif)
+        self.assertFalse(gif.exists())
+        self.assertFalse(gif.with_suffix(".txt").exists())
+        self.assertEqual(result.path.read_bytes(), b"gif")
+        self.assertEqual(result.path.with_suffix(".txt").read_bytes(), b"note")
+        self.assertEqual(self._positions(), {})
+        self.assertEqual([(e["old"], e["new"]) for e in journal.load(self.root)], [(rel, None)])
+
+    def test_lone_gif_rename(self) -> None:
+        gif, rel = self._lone_gif()
+        target = lib.rename(self.root, self.lineups, gif, "H").path
+        new_rel = lib.rel_of(self.lineups, target)
+        self.assertEqual(target.read_bytes(), b"gif")
+        self.assertEqual(target.with_suffix(".txt").read_bytes(), b"note")
+        self.assertFalse(gif.exists())
+        self.assertEqual(self._positions(), {new_rel: {"from": [0.1, 0.1]}})
+        self.assertEqual([(e["old"], e["new"]) for e in journal.load(self.root)], [(rel, new_rel)])
+
+    def test_lone_gif_move(self) -> None:
+        gif, rel = self._lone_gif()
+        target = lib.move(self.root, self.lineups, gif, "bind", "defense", "b").path
+        new_rel = lib.rel_of(self.lineups, target)
+        self.assertEqual(target.read_bytes(), b"gif")
+        self.assertEqual(target.with_suffix(".txt").read_bytes(), b"note")
+        self.assertFalse(gif.exists())
+        self.assertEqual(self._positions(), {new_rel: {"from": [0.1, 0.1]}})
+        self.assertEqual([(e["old"], e["new"]) for e in journal.load(self.root)], [(rel, new_rel)])
+
     def test_browser_save_writes_machine_name(self) -> None:
         state = self.root / "last-view.json"
         with mock.patch.dict(os.environ, {"COMPUTERNAME": "PC-TEST"}):

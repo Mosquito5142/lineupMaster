@@ -48,11 +48,17 @@ def clean_stem(name: str) -> str:
 
 
 def sidecars(image: Path) -> list[Path]:
-    """ไฟล์พ่วงที่มีอยู่จริงของรูปนี้."""
+    """ไฟล์พ่วงที่มีอยู่จริงของรูปนี้ — **ไม่รวมตัวรูปเอง**.
+
+    gif เดี่ยว (ไม่มีรูปนิ่งคู่) เป็นไลน์อัพเอง ถ้านับ ``X.gif`` เป็นของพ่วงของ ``X.gif`` ด้วย
+    ลบ/ย้ายจะย้ายไฟล์เดียวกันสองรอบแล้วพัง · เทียบแบบไม่แยกตัวพิมพ์ (``X.GIF`` คือไฟล์เดียวกัน)
+    """
+    own = str(image).casefold()
     return [
         image.with_suffix(suffix)
         for suffix in SIDECAR_SUFFIXES
-        if image.with_suffix(suffix).is_file()
+        if str(image.with_suffix(suffix)).casefold() != own
+        and image.with_suffix(suffix).is_file()
     ]
 
 
@@ -153,8 +159,9 @@ def remove(root: Path, lineups_dir: Path, image: Path) -> Result:
     bin_dir = root / ".trash" / stamp / image.relative_to(lineups_dir).parent
     bin_dir.mkdir(parents=True, exist_ok=True)
 
+    # ของพ่วงก่อน ตัวหลักท้ายสุด (แบบเดียวกับ rename/move) ถ้าพังกลางทางตัวหลักยังอยู่ที่เดิม
     moved = 0
-    for path in [image, *sidecars(image)]:
+    for path in [*sidecars(image), image]:
         shutil.move(str(path), bin_dir / path.name)
         moved += 1
     migrate(root, rel, None)
