@@ -17,6 +17,7 @@
 
   <div class="top-actions">
     <button id="btn-unpinned" class="chip" type="button">ยังไม่จิ้มหมุด 0</button>
+    <button id="btn-merge" type="button" title="เอาของจากโฟลเดอร์ LineupMaster อีกชุดมารวม โดยไม่ทับของที่นี่">รวมคลัง…</button>
     <button id="btn-add" class="primary" type="button">เพิ่มรูปเข้าคลัง</button>
   </div>
 </header>
@@ -340,6 +341,56 @@
   </form>
 </dialog>
 
+<!-- กล่องรวมคลังจากโฟลเดอร์อื่น (merge.js) — สามขั้น: เลือกโฟลเดอร์ → ดูสรุป/ติ๊ก → ผลลัพธ์ -->
+<dialog id="merge-dialog" class="merge">
+  <h2>รวมคลังจากโฟลเดอร์อื่น</h2>
+
+  <section id="merge-pick">
+    <p class="hint">เลือกโฟลเดอร์ LineupMaster อีกชุด (โฟลเดอร์เก่าของเครื่องนี้ หรือชุดที่โหลดจาก Drive)
+      — รูปและหมุดจากโฟลเดอร์นั้นจะถูกรวมเข้าที่นี่ โดย<b>ไม่แก้อะไรในโฟลเดอร์นั้นเลย</b></p>
+    <p class="hint warn-line"><b>ปิดโปรแกรมหลัก (ตัวที่ใช้ตอนเล่น) ก่อนกดรวม</b> — ถ้าเปิดค้างไว้ ตอนปิดมันจะเขียนแมพล่าสุด/สถิติใช้บ่อยทับของที่รวมมา</p>
+    <ul id="merge-found" class="merge-found"></ul>
+    <label class="wide">หรือวาง path ของโฟลเดอร์เอง
+      <input id="merge-path" type="text" placeholder="C:\Users\...\LineupMaster" autocomplete="off"></label>
+    <menu>
+      <button type="button" data-merge-close>ปิด</button>
+      <button id="merge-go" type="button" class="primary">ดูสรุป</button>
+    </menu>
+  </section>
+
+  <section id="merge-preview" hidden>
+    <p id="merge-from" class="hint"></p>
+    <ul id="merge-summary" class="merge-summary"></ul>
+    <div id="merge-ask-box" hidden>
+      <h3>ไม่แน่ใจ — ติ๊กเฉพาะรายการที่อยากให้ทำ</h3>
+      <ul id="merge-ask" class="merge-list"></ul>
+    </div>
+    <div id="merge-conflicts-box" hidden>
+      <h3>ขัดกัน — รูป: ค่าเริ่มต้นเอาอันที่แก้ล่าสุด (เปลี่ยนได้) · หมุด/สกิล/ป้าย: ไม่ติ๊ก = เก็บของที่นี่ · ติ๊ก = ใช้ของโฟลเดอร์นั้น</h3>
+      <ul id="merge-conflicts" class="merge-list"></ul>
+    </div>
+    <label class="wide">ค่าเฉพาะเครื่อง (กรอบแคปชื่อโซน · โฟลเดอร์ภาพแคป · แมพล่าสุด)
+      <select id="merge-machine"></select></label>
+    <label id="merge-config-row" class="check" hidden>
+      <input id="merge-config" type="checkbox"> ใช้ <span id="merge-config-names"></span> ของโฟลเดอร์นั้นแทน</label>
+    <details id="merge-more" hidden>
+      <summary>รายละเอียดที่จัดการให้อัตโนมัติ</summary>
+      <ul id="merge-detail" class="merge-list"></ul>
+    </details>
+    <menu>
+      <button id="merge-back" type="button">ย้อนกลับ</button>
+      <button id="merge-apply" type="button" class="primary">รวมเลย</button>
+    </menu>
+  </section>
+
+  <section id="merge-done" hidden>
+    <ul id="merge-report" class="merge-summary"></ul>
+    <p class="hint">ถ้าเปิดโปรแกรมหลักค้างไว้ ปิดแล้วเปิดใหม่ถึงจะเห็นของที่รวมมา ·
+      อยากให้อีกเครื่องได้ของครบด้วย อัปโหลดโฟลเดอร์นี้ขึ้น Drive แล้วที่เครื่องนั้นกดรวมแบบเดียวกัน</p>
+    <menu><button type="button" class="primary" data-merge-close>เสร็จ</button></menu>
+  </section>
+</dialog>
+
 <p id="toast" class="toast" hidden></p>
 <p class="dropzone-hint">ลากไฟล์รูปมาวางในหน้านี้ หรือกด Ctrl+V วางจากคลิปบอร์ดได้เลย</p>
 
@@ -347,5 +398,6 @@
 <script src="mapview.js"></script>
 <script src="app.js"></script>
 <script src="source.js"></script>
+<script src="merge.js"></script>
 </body>
 </html>

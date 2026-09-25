@@ -1,0 +1,185 @@
+/* รวมคลังจากโฟลเดอร์อื่น — หน้าตาของ lineupmaster/merge.py
+ *
+ * สามขั้นในกล่องเดียว: เลือกโฟลเดอร์ → ดูสรุป/ติ๊ก → ผลลัพธ์ · แผนตัวจริงเซิร์ฟเวอร์จำไว้เอง
+ * หน้านี้ส่งกลับไปแค่สิ่งที่ผู้ใช้ติ๊ก (id ของรายการ) ไม่ได้ส่งแผนกลับไปทั้งก้อน
+ * สเปก: docs/superpowers/specs/2026-09-25-library-merge-design.md
+ */
+
+const MERGE_KIND = { image: "รูป", pin: "หมุด", ability: "สกิล", callout: "ป้ายชื่อโซน" };
+
+function mergeStage(name) {
+  for (const stage of ["pick", "preview", "done"]) $(`merge-${stage}`).hidden = stage !== name;
+}
+
+function mergeLine(html) {
+  const li = document.createElement("li");
+  li.innerHTML = html;
+  return li;
+}
+
+async function openMerge() {
+  mergeStage("pick");
+  $("merge-path").value = "";
+  const found = $("merge-found");
+  found.replaceChildren(mergeLine('<span class="hint">กำลังหาโฟลเดอร์คลังอื่นในเครื่อง…</span>'));
+  $("merge-dialog").showModal();
+  try {
+    const { folders } = await api("merge/candidates");
+    found.replaceChildren();
+    if (!folders.length) {
+      found.append(mergeLine('<span class="hint">ไม่เจอโฟลเดอร์คลังอื่นแถว Desktop / Downloads — วาง path เองด้านล่าง</span>'));
+    }
+    for (const folder of folders) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "merge-folder";
+      const seen = folder.machine ? ` · เปิดล่าสุดที่ ${escapeHtml(folder.machine)}` : "";
+      button.innerHTML = `<b>${escapeHtml(folder.path)}</b>` +
+        `<span>${folder.images} ใบ · แก้ล่าสุด ${escapeHtml(folder.modified.replace("T", " "))}${seen}</span>`;
+      button.addEventListener("click", () => { $("merge-path").value = folder.path; previewMerge(); });
+      const li = document.createElement("li");
+      li.append(button);
+      found.append(li);
+    }
+  } catch (error) {
+    found.replaceChildren(mergeLine(`<span class="hint">${escapeHtml(error.message)}</span>`));
+  }
+}
+
+async function previewMerge() {
+  const path = $("merge-path").value.trim();
+  if (!path) { say("เลือกโฟลเดอร์หรือวาง path ก่อน", "warn"); return; }
+  $("merge-go").disabled = true;
+  try {
+    renderMergePlan(await api("merge/preview", { path }));
+    mergeStage("preview");
+  } catch (error) {
+    say(error.message, "err");
+  } finally {
+    $("merge-go").disabled = false;
+  }
+}
+
+/** ค่าของที่ขัดกันแบบอ่านรู้เรื่อง — รูปบอกขนาด/เวลา หมุดบอกพิกัด ที่เหลือโชว์ตรงๆ */
+function mergeValue(kind, value) {
+  if (value == null) return "—";
+  if (kind === "image") return `${Math.round(value.size / 1024)} KB · ${value.mtime.replace("T", " ")}`;
+  if (kind === "pin") {
+    const at = (point) => (point ? point.map((n) => n.toFixed(3)).join(", ") : "—");
+    return `ยืน ${at(value.from)} → ${at(value.to)}`;
+  }
+  if (kind === "callout") return value.label || "";
+  return String(value);
+}
+
+function renderMergePlan(plan) {
+  const c = plan.counts;
+  $("merge-from").textContent = `จาก ${plan.there}`;
+
+  const rows = [
+    [c.copy, "รูปใหม่ที่จะก๊อปมา"],
+    [c.rename, "ใบที่อีกเครื่องเปลี่ยนชื่อ/ย้าย — ทำตาม"],
+    [c.remove, "ใบที่อีกเครื่องลบไปแล้ว — ย้ายเข้า .trash ตาม"],
+    [c.positions, "หมุดบนแผนที่ที่จะเพิ่ม"],
+    [c.meta, "ใบที่ได้สกิล/แท็ก/ไม้ตายเพิ่ม"],
+    [c.callouts, "ป้ายชื่อโซนที่จะเพิ่ม"],
+    [c.taken, "รายการ \"เอามาแล้ว\" จากหน้าหาไลน์อัพ"],
+  ].filter(([n]) => n > 0);
+  const summary = $("merge-summary");
+  summary.replaceChildren(...rows.map(([n, label]) => mergeLine(`${escapeHtml(label)} <b>${n}</b>`)));
+  if (!rows.length && !plan.ask.length && !plan.conflicts.length) {
+    summary.append(mergeLine("สองโฟลเดอร์มีของเหมือนกันแล้ว ไม่มีรูปหรือหมุดให้รวม"));
+  }
+
+  const ask = $("merge-ask");
+  ask.replaceChildren(...plan.ask.map((item) => mergeLine(
+    `<label><input type="checkbox" value="${item.id}"${item.default ? " checked" : ""}>` +
+    `<span><code>${escapeHtml(item.rel)}</code><br><small>${escapeHtml(item.detail)}</small></span></label>`)));
+  $("merge-ask-box").hidden = !plan.ask.length;
+
+  // รูปชื่อซ้ำแต่เนื้อต่าง ผู้ใช้เลือกแล้วว่าตั้งต้นที่ "เอาอันที่แก้ล่าสุด" (เซิร์ฟเวอร์ตั้ง item.default
+  // ตามเวลาแก้ไฟล์) แต่ยังเลือกเก็บทั้งคู่รายใบได้ · ที่ขัดกันอย่างอื่นเป็นแค่ค่าเดียว ใช้ติ๊กถูกพอ
+  const conflicts = $("merge-conflicts");
+  conflicts.replaceChildren(...plan.conflicts.map((item) => {
+    const what = `${escapeHtml(MERGE_KIND[item.kind] || item.kind)} · <code>${escapeHtml(item.key)}</code><br>` +
+      `<small>ที่นี่: ${escapeHtml(mergeValue(item.kind, item.here))} · ` +
+      `โฟลเดอร์นั้น: ${escapeHtml(mergeValue(item.kind, item.there))}</small>`;
+    if (item.kind !== "image") {
+      return mergeLine(`<label><input type="checkbox" value="${item.id}"><span>${what}</span></label>`);
+    }
+    const pick = (value, label) =>
+      `<option value="${value}"${(item.default || "here") === value ? " selected" : ""}>${label}</option>`;
+    const newer = (side) => (item.newer === side ? " — ใหม่กว่า" : "");
+    return mergeLine(`<span>${what}</span><select data-conflict="${item.id}">` +
+      pick("here", `เก็บของที่นี่${newer("here")}`) +
+      pick("there", `ใช้ของโฟลเดอร์นั้น (ของที่นี่เข้า .trash)${newer("there")}`) +
+      pick("both", "เก็บทั้งคู่ (ของโฟลเดอร์นั้นได้ชื่อใหม่)") + "</select>");
+  }));
+  $("merge-conflicts-box").hidden = !plan.conflicts.length;
+
+  const m = plan.machine;
+  const who = (name) => (name ? ` (เปิดล่าสุดที่ ${name})` : "");
+  fill($("merge-machine"), [
+    ["there", `ใช้ของโฟลเดอร์นั้น${who(m.there)}`],
+    ["here", `ใช้ของที่นี่${who(m.here)}`],
+  ], { value: m.default });
+
+  $("merge-config").checked = false;
+  $("merge-config-names").textContent = plan.config_differs.join(", ");
+  $("merge-config-row").hidden = !plan.config_differs.length;
+
+  const detail = [
+    ...plan.rename_here.map((item) =>
+      `เปลี่ยนชื่อ <code>${escapeHtml(item.old)}</code> → <code>${escapeHtml(item.new)}</code>`),
+    ...plan.remove_here.map((item) => `ลบ (เข้า .trash) <code>${escapeHtml(item.rel)}</code>`),
+    ...plan.skipped.map((item) => `ข้าม <code>${escapeHtml(item.rel)}</code> — ${escapeHtml(item.why)}`),
+  ];
+  $("merge-detail").replaceChildren(...detail.map(mergeLine));
+  $("merge-more").hidden = !detail.length;
+}
+
+async function applyMerge() {
+  const ticked = (id) => [...document.querySelectorAll(`#${id} input:checked`)].map((box) => Number(box.value));
+  const images = (value) => [...document.querySelectorAll("#merge-conflicts select[data-conflict]")]
+    .filter((select) => select.value === value).map((select) => Number(select.dataset.conflict));
+  const choices = {
+    ask: ticked("merge-ask"),
+    take_there: [...ticked("merge-conflicts"), ...images("there")],
+    keep_both: images("both"),
+    machine: $("merge-machine").value,
+    config: $("merge-config").checked,
+  };
+  $("merge-apply").disabled = true;
+  try {
+    const { report } = await api("merge/apply", { choices });
+    const rows = [
+      [report.copied, "ก๊อปรูปใหม่มา"], [report.renamed, "เปลี่ยนชื่อ/ย้ายตามอีกเครื่อง"],
+      [report.removed, "ย้ายเข้า .trash"], [report.replaced, "แทนรูปด้วยของโฟลเดอร์นั้น"],
+      [report.kept_both, "เก็บทั้งคู่ (ของโฟลเดอร์นั้นได้ชื่อใหม่)"],
+      [report.positions, "หมุดใหม่"], [report.callouts, "ป้ายชื่อโซนใหม่"],
+    ].filter(([n]) => n > 0);
+    const errors = report.errors || [];
+    $("merge-report").replaceChildren(
+      mergeLine(errors.length ? "<b>รวมเสร็จ แต่มีบางรายการทำไม่สำเร็จ</b>" : "<b>รวมเสร็จแล้ว</b>"),
+      ...rows.map(([n, label]) => mergeLine(`${escapeHtml(label)} <b>${n}</b>`)),
+      // ที่พังจะไม่ถูกจดว่าทำแล้ว — แก้สาเหตุ (เช่นปิดโปรแกรมที่เปิดไฟล์ค้าง) แล้วกดรวมใหม่ได้เลย
+      ...errors.map((line) => mergeLine(`<small class="merge-error">ทำไม่สำเร็จ: ${escapeHtml(line)}</small>`)),
+      mergeLine(`<small>ของเดิมที่ถูกแทน/ลบ และ json ก่อนรวม เก็บไว้ที่ <code>${escapeHtml(report.trash)}</code></small>`),
+    );
+    mergeStage("done");
+    await load();
+  } catch (error) {
+    say(error.message, "err");
+  } finally {
+    $("merge-apply").disabled = false;
+  }
+}
+
+$("btn-merge").addEventListener("click", openMerge);
+$("merge-go").addEventListener("click", previewMerge);
+$("merge-path").addEventListener("keydown", (event) => { if (event.key === "Enter") previewMerge(); });
+$("merge-back").addEventListener("click", () => mergeStage("pick"));
+$("merge-apply").addEventListener("click", applyMerge);
+for (const button of document.querySelectorAll("[data-merge-close]")) {
+  button.addEventListener("click", () => $("merge-dialog").close());
+}
