@@ -328,6 +328,18 @@ class MergeTest(unittest.TestCase):
         self.assertIn(A, [s["rel"] for s in plan["skipped"]])
         self.assertEqual((here / "lineups" / A).read_bytes(), b"v2")
 
+        # ไม่มีสำเนาในถังให้เทียบเนื้อไฟล์ (มีแค่บันทึก) → ตัวกันจากบันทึกของที่นี่ต้องกันไว้เอง
+        here = make_root(self.base, "here2", {A: b"v1"})
+        there = make_root(self.base, "there2", {C: b"c"})
+        lib.rename(here, here / "lineups", here / "lineups" / A, "A Main Y")
+        (here / "lineups" / A).write_bytes(b"v2")
+        journal.save(there, [{"old": A, "new": None, "at": "2026-09-30T10:00:00"}])
+
+        plan = merge.plan(here, there)
+
+        self.assertEqual(plan["remove_here"], [])
+        self.assertIn(A, [s["rel"] for s in plan["skipped"]])
+
     def test_json_backup_holds_pre_merge_data(self) -> None:
         here = make_root(self.base, "here", {A: b"a"})
         there = make_root(self.base, "there", {A: b"a", B: b"b"})
@@ -553,20 +565,19 @@ class MergeTest(unittest.TestCase):
         note = B.replace(".png", ".txt")
         here = make_root(self.base, "here", {A: b"a"})
         there = make_root(self.base, "there", {A: b"a", B: b"b", note: b"their note"})
+        put(there, "positions.json", {B: {"from": [0.2, 0.2]}})
         plan = merge.plan(here, there)
+        self.assertEqual([c["rel"] for c in plan["copy"]], [B])
         (here / "lineups" / note).parent.mkdir(parents=True)
         (here / "lineups" / note).write_bytes(b"my note")   # ไม่ใช่รูป ลายนิ้วมือจึงไม่เปลี่ยน
 
-        try:
-            report = merge.apply(plan, {})
-        except ValueError:
-            report = None
+        report = merge.apply(plan, {})                     # ต้นทางครบ ผ่านด่านตรวจ แล้วไปติดตอนก๊อป
+
         self.assertEqual((here / "lineups" / note).read_bytes(), b"my note")
-        if report is not None:
-            self.assertEqual(report["copied"], 0)
-            self.assertEqual(len(report["errors"]), 1)
-            self.assertIn(B, report["errors"][0])
-            self.assertFalse((here / "lineups" / B).exists())
+        self.assertEqual((report["copied"], len(report["errors"])), (0, 1))
+        self.assertTrue(report["errors"][0].startswith(B + ":"))
+        self.assertFalse((here / "lineups" / B).exists())
+        self.assertEqual(get(here, "positions.json"), {})
 
     def test_locked_file_is_reported_and_the_rest_still_merges(self) -> None:
         gif = A.replace(".png", ".gif")
@@ -592,7 +603,9 @@ class MergeTest(unittest.TestCase):
         self.assertTrue((here / "lineups" / gif).is_file(), "ของพ่วงที่ย้ายไปแล้วต้องกลับที่เดิม")
         self.assertEqual(report["copied"], 1)
         self.assertEqual(get(here, "positions.json"), {B: {"from": [0.2, 0.2]}})
-        self.assertIn(A, [e["old"] for e in journal.load(here)])
+        # ลบไม่สำเร็จ = ไม่รวมบันทึกการลบนั้นเข้ามา รอบหน้าจะได้ลบใหม่ (R1)
+        self.assertNotIn(A, [e["old"] for e in journal.load(here)])
+        self.assertEqual([r["rel"] for r in merge.plan(here, there)["remove_here"]], [A])
 
     def test_gap_fill_is_not_a_conflict(self) -> None:
         here = make_root(self.base, "here", {A: b"a"})
@@ -624,6 +637,191 @@ class MergeTest(unittest.TestCase):
         (there / "config.yaml").write_text("lineups_dir: ../here/lineups\n", encoding="utf-8")
         with self.assertRaises(ValueError):
             merge.plan(here, there)
+
+    # -- รอบแก้ที่ 2 --------------------------------------------------------------
+    def test_failed_rename_does_not_misattach_and_is_replayed(self) -> None:
+        old = "ascent/attack/sova/A/A Main old.png"
+        here = make_root(self.base, "here", {A: b"v1"})
+        there = make_root(self.base, "there", {A: b"v1"})
+        put(here, "meta.json", {A: {"tags": ["here-v1"]}})
+        lib.rename(there, there / "lineups", there / "lineups" / A, "A Main old")
+        (there / "lineups" / A).write_bytes(b"v2")
+        put(there, "positions.json", {A: {"from": [0.6, 0.6]}})
+        put(there, "meta.json", {old: {"tags": ["there-v1"]}, A: {"tags": ["there-v2"]}})
+        put(there, "last-view.json", {"uses": {A: 9}})
+        plan = merge.plan(here, there)
+
+        with mock.patch.object(merge, "_relocate", side_effect=OSError("ล็อกอยู่")):
+            report = merge.apply(plan, {})
+
+        self.assertTrue(report["errors"])
+        self.assertEqual((here / "lineups" / A).read_bytes(), b"v1")
+        self.assertEqual(get(here, "meta.json"), {A: {"tags": ["here-v1", "there-v1"]}})
+        self.assertEqual(get(here, "positions.json"), {})
+        self.assertNotIn(A, get(here, "last-view.json").get("uses", {}))
+        self.assertNotIn((A, old), [(e["old"], e["new"]) for e in journal.load(here)])
+        again = merge.plan(here, there)
+        self.assertEqual([(r["old"], r["new"]) for r in again["rename_here"]], [(A, old)])
+
+    def test_their_delete_of_a_different_image_keeps_ours(self) -> None:
+        here = make_root(self.base, "here", {A: b"a", B: b"v2"})
+        there = make_root(self.base, "there", {A: b"a", B: b"v1"})
+        lib.remove(there, there / "lineups", there / "lineups" / B)
+
+        plan, _ = run(here, there)
+
+        self.assertEqual(plan["remove_here"], [])
+        self.assertIn(B, [s["rel"] for s in plan["skipped"]])
+        self.assertEqual((here / "lineups" / B).read_bytes(), b"v2")
+
+    def test_our_delete_of_a_different_image_still_copies_theirs(self) -> None:
+        here = make_root(self.base, "here", {A: b"a", B: b"v1"})
+        there = make_root(self.base, "there", {A: b"a", B: b"v2"})
+        lib.remove(here, here / "lineups", here / "lineups" / B)
+
+        plan, _ = run(here, there)
+
+        self.assertEqual([c["rel"] for c in plan["copy"]], [B])
+        self.assertEqual((here / "lineups" / B).read_bytes(), b"v2")
+
+    def test_duplicate_of_an_unchanged_image_is_asked(self) -> None:
+        dup = "ascent/attack/sova/A/copy of A.png"
+        here = make_root(self.base, "here", {A: b"a"})
+        there = make_root(self.base, "there", {A: b"a", dup: b"a"})
+
+        plan = merge.plan(here, there)
+
+        self.assertEqual([(a["kind"], a["rel"]) for a in plan["ask"]], [("new-dup", dup)])
+        self.assertEqual(plan["copy"], [])
+
+    def test_their_delete_of_a_duplicate_is_honoured(self) -> None:
+        dup = "ascent/attack/sova/A/A Main (2).png"
+        here = make_root(self.base, "here", {A: b"a", dup: b"a"})
+        there = make_root(self.base, "there", {A: b"a", dup: b"a"})
+        lib.remove(there, there / "lineups", there / "lineups" / dup)
+
+        plan, report = run(here, there)
+
+        self.assertEqual([r["rel"] for r in plan["remove_here"]], [dup])
+        self.assertEqual(report["removed"], 1)
+        self.assertEqual((here / "lineups" / A).read_bytes(), b"a")
+
+    def test_image_conflict_can_keep_both(self) -> None:
+        here = make_root(self.base, "here", {A: b"mine"})
+        there = make_root(self.base, "there", {A: b"theirs"})
+        put(here, "meta.json", {A: {"tags": ["mine"]}})
+        put(there, "positions.json", {A: {"from": [0.6, 0.6]}})
+        plan = merge.plan(here, there)
+        self.assertEqual([(c["kind"], c["default"], c["newer"]) for c in plan["conflicts"]],
+                         [("image", "here", "same")])
+
+        merge.apply(plan, {})
+        self.assertEqual({r: p.read_bytes() for r, p in merge.images(here).items()}, {A: b"mine"})
+        self.assertEqual(get(here, "positions.json"), {})
+
+        plan = merge.plan(here, there)
+        report = merge.apply(plan, {"keep_both": [plan["conflicts"][0]["id"]]})
+        self.assertEqual((report["kept_both"], report["errors"]), (1, []))
+        got = {r: p.read_bytes() for r, p in merge.images(here).items()}
+        self.assertEqual(got[A], b"mine")
+        new_rel = next(r for r, data in got.items() if data == b"theirs")
+        self.assertEqual(get(here, "positions.json"), {new_rel: {"from": [0.6, 0.6]}})
+        self.assertEqual(get(here, "meta.json"), {A: {"tags": ["mine"]}})
+
+        plan = merge.plan(here, there)
+        image = next(c for c in plan["conflicts"] if c["key"] == A)
+        report = merge.apply(plan, {"take_there": [image["id"]]})
+        self.assertEqual(report["replaced"], 1)
+        self.assertEqual((here / "lineups" / A).read_bytes(), b"theirs")
+
+    def test_image_conflict_default_is_the_newer_file(self) -> None:
+        here = make_root(self.base, "here", {A: b"mine"})
+        there = make_root(self.base, "there", {A: b"theirs"})
+        now = (here / "lineups" / A).stat().st_mtime
+        put(here, "callouts.json", {"ascent": {"a-main": {"label": "A Main", "xy": [0.1, 0.1]}}})
+        put(there, "callouts.json", {"ascent": {"a-main": {"label": "A Main", "xy": [0.9, 0.9]}}})
+        cases =((now + 60, "there", "there"), (now - 60, "here", "here"),
+                 (now + 1, "same", "here"))
+        for stamp, newer, default in cases:
+            os.utime(there / "lineups" / A, (stamp, stamp))
+            plan = merge.plan(here, there)
+            image = [c for c in plan["conflicts"] if c["kind"] == "image"]
+            self.assertEqual([(c["newer"], c["default"]) for c in image], [(newer, default)])
+            self.assertEqual([(c["kind"], c["default"]) for c in plan["conflicts"]
+                              if c["kind"] != "image"], [("callout", "here")])
+        merge.apply(plan, {})                                # ค่าเริ่มต้นฝั่งหลังบ้านยังเก็บของที่นี่
+        self.assertEqual((here / "lineups" / A).read_bytes(), b"mine")
+
+    def test_folder_case_drift_of_the_same_image_keeps_data(self) -> None:
+        mine = "ascent/attack/sova/A/x.png"
+        theirs = "ascent/attack/sova/a/x.png"
+        here = make_root(self.base, "here", {mine: b"same"})
+        there = make_root(self.base, "there", {theirs: b"same"})
+        put(there, "positions.json", {theirs: {"from": [0.3, 0.3]}})
+
+        plan, report = run(here, there)
+
+        self.assertEqual((plan["ask"], plan["copy"]), ([], []))
+        self.assertEqual(get(here, "positions.json"), {mine: {"from": [0.3, 0.3]}})
+
+        # รูปใหม่คนละชื่อ แต่โฟลเดอร์ต่างแค่ตัวพิมพ์: Windows วางลงโฟลเดอร์ A เดิม หมุดต้องตามชื่อจริง
+        other = "ascent/attack/sova/a/y.png"
+        (there / "lineups" / other).write_bytes(b"new")
+        put(there, "positions.json", {theirs: {"from": [0.3, 0.3]}, other: {"from": [0.5, 0.5]}})
+
+        run(here, there)
+
+        on_disk = next(rel for rel, p in merge.images(here).items() if p.read_bytes() == b"new")
+        self.assertEqual(get(here, "positions.json"),
+                         {mine: {"from": [0.3, 0.3]}, on_disk: {"from": [0.5, 0.5]}})
+
+    def test_precheck_alone_refuses_a_missing_source(self) -> None:
+        here = make_root(self.base, "here", {A: b"a"})
+        there = make_root(self.base, "there", {A: b"a", B: b"b"})
+        plan = merge.plan(here, there)
+        before = tree_hash(here)
+        (there / "lineups" / B).unlink()
+        planned = {str(Path(plan["here"])): plan["fingerprint"]["here"],
+                   str(Path(plan["there"])): plan["fingerprint"]["there"]}
+        with mock.patch.object(merge, "_fingerprint", side_effect=lambda r: planned[str(r)]):
+            with self.assertRaises(ValueError):
+                merge.apply(plan, {})
+        self.assertEqual(tree_hash(here), before)
+
+    def test_fingerprint_alone_catches_a_name_swap(self) -> None:
+        here = make_root(self.base, "here", {A: b"a", B: b"b"})
+        there = make_root(self.base, "there", {A: b"a", B: b"b"})
+        plan = merge.plan(here, there)
+        self.assertEqual((plan["copy"], plan["rename_here"], plan["remove_here"]), ([], [], []))
+        (there / "lineups" / B).rename(there / "lineups" / B.replace("B Site", "B Site 2"))
+        with self.assertRaises(ValueError):
+            merge.apply(plan, {})
+
+    def test_ticked_there_trashed_is_journaled_as_delete(self) -> None:
+        here = make_root(self.base, "here", {A: b"a", C: b"c"})
+        there = make_root(self.base, "there", {A: b"a"})
+        (there / ".trash" / "20260101-000000" / Path(C).parent).mkdir(parents=True)
+        (there / ".trash" / "20260101-000000" / C).write_bytes(b"c")
+        plan = merge.plan(here, there)
+        self.assertEqual([a["kind"] for a in plan["ask"]], ["there-trashed"])
+
+        merge.apply(plan, {"ask": [plan["ask"][0]["id"]]})
+
+        self.assertFalse((here / "lineups" / C).exists())
+        self.assertIn((C, None), [(e["old"], e["new"]) for e in journal.load(here)])
+
+    def test_failed_replace_restores_ours(self) -> None:
+        here = make_root(self.base, "here", {A: b"mine"})
+        there = make_root(self.base, "there", {A: b"theirs"})
+        put(there, "positions.json", {A: {"from": [0.6, 0.6]}})
+        plan = merge.plan(here, there)
+        with mock.patch.object(merge, "_copy_in", side_effect=OSError("ดิสก์เต็ม")):
+            report = merge.apply(plan, {"take_there": [plan["conflicts"][0]["id"]]})
+
+        self.assertEqual(report["replaced"], 0)
+        self.assertEqual(len(report["errors"]), 1)
+        self.assertEqual((here / "lineups" / A).read_bytes(), b"mine")
+        self.assertEqual(get(here, "positions.json"), {})
 
     def test_trash_folder_is_never_reused(self) -> None:
         here = make_root(self.base, "here", {A: b"mine"})

@@ -76,12 +76,13 @@ def images(root: Path) -> dict[str, Path]:
     return out
 
 
-def trashed(root: Path) -> set[str]:
-    """rel ของรูปที่เคยถูกลบเข้า ``.trash/<เวลา>/...`` — ใช้จับการลบที่เกิดก่อนมีบันทึก.
+def trashed(root: Path) -> dict[str, list[Path]]:
+    """rel → สำเนาในถัง ของรูปที่เคยถูกลบเข้า ``.trash/<เวลา>/...``.
 
     ``library.remove`` เก็บโครงโฟลเดอร์เดิมไว้ใต้โฟลเดอร์เวลา path หลังโฟลเดอร์เวลาจึงคือ rel เดิม
+    เก็บตัวไฟล์ไว้ด้วยเพื่อเทียบเนื้อ: ชื่อตรงกันไม่ได้แปลว่าเป็นรูปเดียวกัน (ลบแล้วแคปใหม่ชื่อเดิม)
     """
-    out: set[str] = set()
+    out: dict[str, list[Path]] = {}
     bin_root = root / ".trash"
     if not bin_root.is_dir():
         return out
@@ -90,7 +91,7 @@ def trashed(root: Path) -> set[str]:
             continue
         for path in stamp.rglob("*"):
             if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES:
-                out.add("/".join(path.relative_to(stamp).parts))
+                out.setdefault("/".join(path.relative_to(stamp).parts), []).append(path)
     return out
 
 
@@ -157,6 +158,13 @@ def _file_info(path: Path) -> dict:
     stat = path.stat()
     return {"size": stat.st_size,
             "mtime": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="minutes")}
+
+
+def _newer(mine: Path, theirs: Path) -> str:
+    """ฝั่งไหนแก้ไฟล์ทีหลัง: ``"here"`` / ``"there"`` / ``"same"`` — ต่างกันไม่เกิน 2 วินาทีถือว่า
+    เท่ากัน (FAT/zip เก็บเวลาละเอียดแค่ 2 วินาที ผ่าน Drive แล้วเวลาเพี้ยนได้เท่านี้)."""
+    diff = theirs.stat().st_mtime - mine.stat().st_mtime
+    return "there" if diff > 2 else "here" if diff < -2 else "same"
 
 
 def _is_image_key(key: str) -> bool:
@@ -369,6 +377,23 @@ class _Sides:
         self.here_own = [e for e in here_log if journal.key(e) not in shared]
         self.there_own = [e for e in there_log if journal.key(e) not in shared]
         self.here_trash, self.there_trash = trashed(here), trashed(there)
+        self._trash_hash: dict[Path, str] = {}
+
+    def in_trash(self, trash: dict[str, list[Path]], rel: str, digest: str) -> bool | None:
+        """ถังมีสำเนาของ ``rel`` ที่เนื้อตรงกับ ``digest`` ไหม — ไม่มีสำเนาชื่อนี้เลยคืน None.
+
+        แฮชเฉพาะสำเนาที่ต้องเทียบจริง (ถังอาจใหญ่ แต่ชื่อที่ต้องดูมีไม่กี่ใบ)
+        """
+        copies = trash.get(rel)
+        if not copies:
+            return None
+        for path in copies:
+            if path not in self._trash_hash:
+                try:
+                    self._trash_hash[path] = _digest(path)
+                except OSError:
+                    self._trash_hash[path] = ""
+        return any(self._trash_hash[path] == digest for path in copies)
 
 
 def _moved_to(entries: list[dict], rel: str) -> str | None:
@@ -377,15 +402,29 @@ def _moved_to(entries: list[dict], rel: str) -> str | None:
     return final if touched and final != rel else None
 
 
-def _match_by_content(s: _Sides, out: dict, ids) -> tuple[list[tuple[str, str]], set, dict]:
+def _chain(entries: list[dict], rel: str) -> list[list]:
+    """รายการในบันทึกที่พา ``rel`` ไปถึงชะตาสุดท้าย (ไล่แบบเดียวกับ ``journal.fate``).
+
+    เก็บไว้กับรายการเปลี่ยนชื่อ/ลบในแผน: ถ้าทำไม่สำเร็จ apply จะไม่รวมรายการพวกนี้เข้าบันทึกของ
+    ที่นี่ รอบหน้าจะได้เล่นซ้ำ (เป็น list ล้วนเพื่อส่งเป็น JSON ได้)
+    """
+    current: str | None = rel
+    out: list[list] = []
+    for entry in sorted(entries, key=lambda e: e["at"]):
+        if current is not None and entry["old"] == current:
+            out.append([entry["old"], entry["new"], entry["at"]])
+            current = entry["new"]
+    return out
+
+
+def _match_by_content(s: _Sides, out: dict) -> tuple[list[tuple[str, str]], set, set]:
     """ขั้น 1: รูปของ THERE ที่เนื้อไฟล์มีอยู่แล้วใน HERE ใต้อีกชื่อ.
 
-    คืน ``(เปลี่ยนชื่อที่อยากทำ [(old, new)], rel ของ THERE ที่จัดการแล้ว, {rel: ใบที่เหมือนกันใน HERE})``
-    ใบที่เหมือนกันแต่ไม่มีบันทึกยืนยัน ส่งต่อไปถามผู้ใช้ในขั้น 3 (new-dup)
+    คืน ``(เปลี่ยนชื่อที่อยากทำ [(old, new)], rel ของ THERE ที่จัดการแล้ว, rel ของ HERE ที่ถูกจับคู่)``
+    ใบที่เหมือนกันแต่ไม่มีอะไรยืนยัน ขั้น 3 จะถามผู้ใช้เอง (new-dup)
     """
     wanted: list[tuple[str, str]] = []
     done: set[str] = set()
-    dup_of: dict[str, str] = {}
     used: set[str] = set()                 # HERE หนึ่งใบเป็นต้นทางได้ครั้งเดียว
     for rel in sorted(s.there_img):
         if rel in s.identical:
@@ -394,9 +433,15 @@ def _match_by_content(s: _Sides, out: dict, ids) -> tuple[list[tuple[str, str]],
                  if h not in s.identical and h not in used]
         if not found:
             continue
+        # ชื่อเดียวกันต่างแค่ตัวพิมพ์ (มักเป็นตัวพิมพ์ของโฟลเดอร์) + เนื้อตรง = ใบเดียวกัน ไม่ต้องถาม
+        same = next((h for h in found if h.casefold() == rel.casefold()), None)
         renamed = next((h for h in found if _moved_to(s.there_own, h) == rel), None)
         aliased = next((h for h in found if _moved_to(s.here_own, rel) == h), None)
-        if renamed:
+        if same:
+            out["alias"][rel] = same
+            used.add(same)
+            done.add(rel)
+        elif renamed:
             wanted.append((renamed, rel))
             used.add(renamed)
             done.add(rel)
@@ -405,9 +450,7 @@ def _match_by_content(s: _Sides, out: dict, ids) -> tuple[list[tuple[str, str]],
             out["skipped"].append({"rel": rel, "why": f"ที่นี่เปลี่ยนชื่อเป็น {aliased} แล้ว"})
             used.add(aliased)
             done.add(rel)
-        else:
-            dup_of[rel] = found[0]
-    return wanted, done, dup_of
+    return wanted, done, used
 
 
 def _order_renames(wanted: list[tuple[str, str]], names) -> tuple[list, list]:
@@ -432,39 +475,55 @@ def _order_renames(wanted: list[tuple[str, str]], names) -> tuple[list, list]:
     return ready, pending
 
 
-def _here_only(s: _Sides, out: dict, ids, here_after: dict) -> None:
-    """ขั้น 2: รูปของ HERE ที่ THERE ไม่มีทั้งชื่อและเนื้อไฟล์ — ดูบันทึก/ถังขยะของอีกเครื่อง."""
+def _their_delete(s: _Sides, out: dict, ids, here_after: dict, rel: str) -> None:
+    """บันทึกของ THERE ลบชื่อ ``rel`` — ลบของที่นี่ก็ต่อเมื่อเป็นรูปเดียวกันจริง."""
+    same = s.in_trash(s.there_trash, rel, s.here_hash[rel])
+    if same is False:
+        out["skipped"].append({"rel": rel, "why": "อีกเครื่องลบรูปชื่อนี้ แต่เป็นคนละรูปกับที่นี่ — เก็บไว้"})
+        return
+    # ไม่มีสำเนาในถังให้เทียบ: ถ้าที่นี่เคยย้ายเข้า/ออกชื่อนี้หลังแยกกัน ชื่อนี้คือรูปอื่นไปแล้ว
+    if same is None and any(rel in (e["old"], e["new"]) for e in s.here_own):
+        out["skipped"].append({"rel": rel, "why": "อีกเครื่องลบชื่อนี้ไปแล้ว "
+                                                 "แต่ที่นี่ใช้ชื่อนี้กับรูปอื่น"})
+        return
+    out["remove_here"].append({"id": next(ids), "rel": rel, "chain": _chain(s.there_own, rel)})
+    here_after.pop(rel)
+
+
+def _here_only(s: _Sides, out: dict, ids, here_after: dict, used: set) -> None:
+    """ขั้น 2: รูปของ HERE ที่ THERE ไม่มีชื่อนี้ — ดูบันทึก/ถังขยะของอีกเครื่อง."""
     for rel in s.here_img:
-        if rel in s.there_img or s.here_hash[rel] in s.there_by_hash or rel not in here_after:
+        if rel in s.there_img or rel in used or rel not in here_after:
             continue
         touched, final = journal.fate(s.there_own, rel)
         if touched and final is None:
-            # อีกเครื่องลบชื่อนี้ แต่ถ้าที่นี่เคยย้ายเข้า/ออกชื่อนี้หลังแยกกัน ชื่อนี้คือรูปอื่นไปแล้ว
-            if any(rel in (e["old"], e["new"]) for e in s.here_own):
-                out["skipped"].append({"rel": rel, "why": "อีกเครื่องลบชื่อนี้ไปแล้ว "
-                                                         "แต่ที่นี่ใช้ชื่อนี้กับรูปอื่น"})
-            else:
-                out["remove_here"].append({"id": next(ids), "rel": rel})
-                here_after.pop(rel)
+            # ดูบันทึกการลบก่อนเช็กว่าเนื้อยังอยู่ที่นั่นไหม: ลบใบซ้ำทิ้ง เนื้อก็ยังอยู่ใต้อีกชื่อ
+            _their_delete(s, out, ids, here_after, rel)
+        elif s.here_hash[rel] in s.there_by_hash:
+            continue                          # เนื้อเดียวกันยังอยู่ที่นั่นใต้อีกชื่อ ไม่แตะ
         elif touched:
             out["skipped"].append({"rel": rel, "why": f"อีกเครื่องเปลี่ยนชื่อเป็น {final} "
                                                      "แต่ไม่เจอรูปเดียวกันที่นั่น — ไม่ได้ทำอะไร"})
-        elif rel in s.there_trash:
+        elif s.in_trash(s.there_trash, rel, s.here_hash[rel]):
             out["ask"].append({"id": next(ids), "kind": "there-trashed", "rel": rel,
                                "default": False,
                                "detail": "อีกเครื่องเคยลบใบนี้ (ก่อนมีบันทึก) — ติ๊กเพื่อลบที่นี่ด้วย"})
 
 
-def _there_new(s: _Sides, out: dict, ids, here_after: dict, done: set, dup_of: dict) -> None:
+def _there_new(s: _Sides, out: dict, ids, here_after: dict, done: set) -> None:
     """ขั้น 3: รูปของ THERE ที่ยังไม่จับคู่ด้วยเนื้อไฟล์ — เทียบชื่อกับ HERE หลังเปลี่ยนชื่อ/ลบแล้ว."""
     slots = {_slot(name): name for name in here_after}
+    shown = {orig: name for name, orig in here_after.items()}      # ชื่อเดิม -> ชื่อหลังทำตามแผน
     for rel, path in s.there_img.items():
         if rel in s.identical or rel in done:
             continue
         if rel in here_after:
             mine = s.here_img[here_after[rel]]
             if s.here_hash[here_after[rel]] != s.there_hash[rel]:
+                newer = _newer(mine, path)
                 out["conflicts"].append({"id": next(ids), "kind": "image", "key": rel,
+                                         "default": "there" if newer == "there" else "here",
+                                         "newer": newer,
                                          "here": _file_info(mine), "there": _file_info(path)})
                 out["hold"].append(rel)
             continue
@@ -478,13 +537,19 @@ def _there_new(s: _Sides, out: dict, ids, here_after: dict, done: set, dup_of: d
                                          "ติ๊กเพื่อก๊อปมาเป็นอีกใบ (ตั้งชื่อใหม่ให้)"})
             continue
         touched, final = journal.fate(s.here_own, rel)
-        if touched and final is None:
+        if (touched and final is None
+                and s.in_trash(s.here_trash, rel, s.there_hash[rel]) is not False):
+            # ที่นี่ลบรูปนี้ไปแล้ว (สำเนาในถังตรงกัน หรือไม่มีสำเนาให้เทียบ) · ถ้าสำเนาในถังเป็น
+            # คนละรูป แปลว่าอีกเครื่องแคปใหม่ชื่อเดิม ถือเป็นรูปใหม่ไหลต่อไปข้างล่าง
             out["skipped"].append({"rel": rel, "why": "ลบไปแล้วที่นี่"})
-        elif rel in dup_of:
+            continue
+        # เนื้อเดียวกันมีอยู่ที่นี่แล้ว (ใบไหนก็ได้ที่ยังอยู่หลังทำตามแผน) → ถาม ไม่ก๊อปเอง
+        twin = next((h for h in s.here_by_hash.get(s.there_hash[rel], []) if h in shown), None)
+        if twin:
             out["ask"].append({"id": next(ids), "kind": "new-dup", "rel": rel, "default": False,
-                               "detail": f"รูปเหมือนกับ {dup_of[rel]} ที่มีอยู่แล้วเป๊ะ "
+                               "detail": f"รูปเหมือนกับ {shown[twin]} ที่มีอยู่แล้วเป๊ะ "
                                          "(น่าจะเปลี่ยนชื่อด้วยมือ) — ติ๊กเพื่อก๊อปมาอีกใบ"})
-        elif rel in s.here_trash:
+        elif s.in_trash(s.here_trash, rel, s.there_hash[rel]):
             out["ask"].append({"id": next(ids), "kind": "new-trashed", "rel": rel,
                                "default": False,
                                "detail": "เคยลบใบนี้ที่นี่ (ก่อนมีบันทึก) — ติ๊กเพื่อเอากลับมา"})
@@ -503,20 +568,22 @@ def plan(here: Path, there: Path) -> dict:
         raise ValueError("สองโฟลเดอร์นี้ใช้โฟลเดอร์รูปเดียวกัน — รวมกันเองไม่ได้")
 
     ids = itertools.count(1)
+    # ลายนิ้วมือก่อนอ่านอย่างอื่น: ถ้ามีคนแก้คลังระหว่างที่กำลังแฮชอยู่ apply จะจับได้
+    fingerprint = {"here": _fingerprint(here), "there": _fingerprint(there)}
     s = _Sides(here, there)
     out: dict = {
-        "here": str(here), "there": str(there),
-        "fingerprint": {"here": _fingerprint(here), "there": _fingerprint(there)},
+        "here": str(here), "there": str(there), "fingerprint": fingerprint,
         "copy": [], "rename_here": [], "remove_here": [], "skipped": [],
         "alias": {}, "ask": [], "conflicts": [], "hold": [],
     }
 
     # 1) เนื้อไฟล์ตรงกันแต่ชื่อต่าง → เปลี่ยนชื่อตามบันทึกของอีกเครื่อง / จำชื่อที่ที่นี่เปลี่ยนไป
-    wanted, done, dup_of = _match_by_content(s, out, ids)
+    wanted, done, used = _match_by_content(s, out)
     ready, blocked = _order_renames(wanted, s.here_img)
     here_after = {rel: rel for rel in s.here_img}          # ชื่อหลังทำตามแผน -> ชื่อเดิมใน HERE
     for old, new in ready:
-        out["rename_here"].append({"id": next(ids), "old": old, "new": new})
+        out["rename_here"].append({"id": next(ids), "old": old, "new": new,
+                                   "chain": _chain(s.there_own, old)})
         here_after.pop(old)
         here_after[new] = old
     for old, new in blocked:
@@ -526,8 +593,8 @@ def plan(here: Path, there: Path) -> dict:
                                                  "(หรือต่างแค่ตัวพิมพ์/นามสกุล) อยู่แล้ว — ไม่ได้เปลี่ยน"})
 
     # 2) รูปที่ที่นี่มีแต่อีกเครื่องไม่มีแล้ว  3) รูปใหม่ของอีกเครื่อง
-    _here_only(s, out, ids, here_after)
-    _there_new(s, out, ids, here_after, done, dup_of)
+    _here_only(s, out, ids, here_after, used)
+    _there_new(s, out, ids, here_after, done)
 
     # 4) ข้อมูล json — หาของที่ขัดกันและนับของที่จะเพิ่ม (ตามค่าเริ่มต้น)
     moves = {item["old"]: item["new"] for item in out["rename_here"]}
@@ -541,7 +608,7 @@ def plan(here: Path, there: Path) -> dict:
         lambda key: not _is_image_key(key) or key in present,
         lambda _kind, _key: False)
     for kind, key, mine, theirs in conflicts:
-        out["conflicts"].append({"id": next(ids), "kind": kind, "key": key,
+        out["conflicts"].append({"id": next(ids), "kind": kind, "key": key, "default": "here",
                                  "here": mine, "there": theirs})
 
     me = machine_name()
@@ -694,28 +761,33 @@ def _free_rel(base: Path, near: str, rel: str) -> str:
 
 
 # -- ทำตามแผน ------------------------------------------------------------------
-def _jobs(plan_: dict, ticked: set, take_ids: set) -> dict:
-    """รวบงานไฟล์ทั้งหมดของรอบนี้ (ตามแผน + ที่ผู้ใช้ติ๊ก) ไว้ตรวจก่อนลงมือ."""
+def _jobs(plan_: dict, ticked: set, take_ids: set, both_ids: set) -> dict:
+    """รวบงานไฟล์ทั้งหมดของรอบนี้ (ตามแผน + ที่ผู้ใช้เลือก) ไว้ตรวจก่อนลงมือ."""
     asks = [a for a in plan_["ask"] if a["id"] in ticked]
+    images_ = [c for c in plan_["conflicts"] if c["kind"] == "image"]
     return {
-        "rename": [(r["old"], r["new"]) for r in plan_["rename_here"]],
-        # (rel, จดลงบันทึกไหม) — ที่ลบตามบันทึกของอีกเครื่องไม่ต้องจดซ้ำ ที่ผู้ใช้ติ๊กลบเองต้องจด
-        "remove": [(r["rel"], False) for r in plan_["remove_here"]]
-                  + [(a["rel"], True) for a in asks if a["kind"] == "there-trashed"],
+        # (old, new, รายการบันทึกเบื้องหลัง)
+        "rename": [(r["old"], r["new"], r.get("chain") or []) for r in plan_["rename_here"]],
+        # (rel, จดลงบันทึกไหม, รายการบันทึกเบื้องหลัง) — ที่ลบตามบันทึกของอีกเครื่องไม่ต้องจดซ้ำ
+        # ที่ผู้ใช้ติ๊กลบเองต้องจด
+        "remove": [(r["rel"], False, r.get("chain") or []) for r in plan_["remove_here"]]
+                  + [(a["rel"], True, []) for a in asks if a["kind"] == "there-trashed"],
         # (rel, ใบที่ชื่อชน หรือ None ถ้าก๊อปชื่อเดิม)
         "copy": [(c["rel"], None) for c in plan_["copy"]]
                 + [(a["rel"], None) for a in asks if a["kind"] in ("new-dup", "new-trashed")]
                 + [(a["rel"], a["with"]) for a in asks if a["kind"] == "case-clash"],
-        "replace": [c["key"] for c in plan_["conflicts"]
-                    if c["kind"] == "image" and c["id"] in take_ids],
+        # เลือกทั้ง "เอาของโน้น" และ "เก็บทั้งคู่" มาพร้อมกัน → เก็บทั้งคู่ (ไม่มีอะไรออกจากคลัง)
+        "keep_both": [c["key"] for c in images_ if c["id"] in both_ids],
+        "replace": [c["key"] for c in images_ if c["id"] in take_ids and c["id"] not in both_ids],
     }
 
 
 def _check_sources(jobs: dict, base_here: Path, base_there: Path) -> None:
     """ไฟล์ต้นทางทุกไฟล์ต้องยังอยู่ก่อนเริ่มแตะอะไร — หายไปแปลว่าแผนเก่าแล้ว."""
-    need = [base_here / old for old, _new in jobs["rename"]]
-    need += [base_here / rel for rel, _record in jobs["remove"]]
+    need = [base_here / old for old, _new, _chain in jobs["rename"]]
+    need += [base_here / rel for rel, _record, _chain in jobs["remove"]]
     need += [base_there / rel for rel, _near in jobs["copy"]]
+    need += [base_there / key for key in jobs["keep_both"]]
     need += [base for key in jobs["replace"] for base in (base_here / key, base_there / key)]
     if not all(path.is_file() for path in need):
         raise ValueError(STALE)
@@ -729,6 +801,15 @@ def _attempt(report: dict, rel: str, action: Callable, *args) -> bool:
     except OSError as exc:
         report["errors"].append(f"{rel}: {exc}")
         return False
+
+
+def _on_disk(base: Path, rel: str) -> str:
+    """rel ตามตัวพิมพ์จริงบนดิสก์ — Windows วางไฟล์ลงโฟลเดอร์เดิมที่ตัวพิมพ์ต่างได้เงียบๆ
+    (``a/x.png`` ไปอยู่ใน ``A/``) คีย์ข้อมูลต้องตามชื่อจริง ไม่งั้นหมุด/แท็กหลุด."""
+    try:
+        return lib.rel_of(base.resolve(), (base / rel).resolve())
+    except (OSError, ValueError):
+        return rel
 
 
 def _take_held(merged: dict, there_data: dict, keys: set[str]) -> None:
@@ -745,10 +826,79 @@ def _take_held(merged: dict, there_data: dict, keys: set[str]) -> None:
             uses[key] = max(int(uses.get(key) or 0), count)
 
 
+class _Run:
+    """สถานะของการรวมหนึ่งรอบ: ข้อมูลของ THERE ต้องตามไปชื่อไหน / คีย์ไหนห้ามเข้า / บันทึกไหนห้ามรวม."""
+
+    def __init__(self, plan_: dict, base_here: Path, base_there: Path, bin_dir: Path) -> None:
+        self.base_here, self.base_there, self.bin_dir = base_here, base_there, bin_dir
+        self.alias = dict(plan_["alias"])
+        self.blocked: set[str] = set()     # คีย์ของ THERE ที่ห้ามรวม (งานไฟล์ของมันพัง)
+        self.lifted: set[str] = set()      # คีย์ที่พักไว้ แต่ผู้ใช้เลือกเก็บทั้งคู่ → ข้อมูลตามใบใหม่ไป
+        self.replaced: set[str] = set()
+        self.unplayed: set[tuple] = set()  # รายการบันทึกของ THERE ที่ทำไม่สำเร็จ ห้ามรวม
+        self.report = {"copied": 0, "renamed": 0, "removed": 0, "replaced": 0, "kept_both": 0,
+                       "trash": str(bin_dir), "errors": []}
+
+    def renames(self, here: Path, jobs: list) -> None:
+        failed = []
+        for old, new, chain in jobs:
+            if _attempt(self.report, old, _relocate, self.base_here, old, new):
+                real = _on_disk(self.base_here, new)
+                lib.migrate(here, old, real, record=False)
+                if real != new:
+                    self.alias[new] = real
+                self.report["renamed"] += 1
+            else:
+                failed.append((old, new))
+                self.unplayed |= {tuple(entry) for entry in chain}
+        # เปลี่ยนชื่อไม่สำเร็จ: ข้อมูลของ THERE ที่ชื่อใหม่เป็นของรูปที่ยังค้างอยู่ชื่อเดิม · ส่วนข้อมูลของ
+        # THERE ที่ชื่อเดิม (ถ้ามี) เป็นของรูปอีกใบ ห้ามแปะลงรูปที่ค้างอยู่ — เว้นแต่มีทางไปที่อื่นแล้ว
+        for old, new in failed:
+            self.alias[new] = old
+        self.blocked |= {old for old, _new in failed if old not in self.alias}
+
+    def removals(self, here: Path, jobs: list) -> None:
+        for rel, record, chain in jobs:
+            if _attempt(self.report, rel, _to_trash, self.base_here, rel, self.bin_dir):
+                lib.migrate(here, rel, None, record=record)
+                self.report["removed"] += 1
+            else:
+                self.unplayed |= {tuple(entry) for entry in chain}
+
+    def copy(self, rel: str, near: str | None, counter: str) -> bool:
+        """ก๊อปหนึ่งใบ (ชื่อเดิม หรือชื่อว่างข้างๆ ``near``) แล้วชี้ข้อมูลของ THERE ไปชื่อจริงบนดิสก์."""
+        try:
+            dst_rel = _free_rel(self.base_here, near, rel) if near else rel
+        except OSError as exc:
+            self.report["errors"].append(f"{rel}: {exc}")
+            self.blocked.add(rel)
+            return False
+        if not _attempt(self.report, rel, _copy_in, self.base_there, self.base_here, rel,
+                        dst_rel, self.bin_dir):
+            self.blocked.add(rel)
+            return False
+        self.report[counter] += 1
+        real = _on_disk(self.base_here, dst_rel)
+        if real != rel:
+            self.alias[rel] = real              # ข้อมูลของ THERE ตามไปชื่อใหม่
+        return True
+
+    def replace(self, key: str) -> None:
+        if _attempt(self.report, key, _replace, self.base_here, self.base_there, key,
+                    self.bin_dir):
+            self.replaced.add(key)
+            self.report["replaced"] += 1
+        else:
+            self.blocked.add(key)
+
+
 def apply(plan_: dict, choices: dict) -> dict:
     """ทำตามแผน — ``choices`` = ``{"ask": [id ที่ติ๊ก], "take_there": [id ของที่ขัดกันที่เอาของ
-    อีกฝั่ง], "machine": "here"|"there", "config": bool}``.
+    อีกฝั่ง], "keep_both": [id ของรูปที่ขัดกันที่เก็บไว้ทั้งคู่], "machine": "here"|"there",
+    "config": bool}``.
 
+    รูปที่ขัดกันซึ่งไม่อยู่ในสองรายการนั้น = เก็บของที่นี่อย่างเดียว (หน้าเว็บเลือกตาม ``default``
+    ของแต่ละรายการไว้ให้ก่อน = ฝั่งที่ไฟล์ใหม่กว่า)
     ตรวจก่อนว่าทั้งสองฝั่งไม่เปลี่ยนไปจากตอนดูสรุป (มีคนแก้คลังระหว่างนั้น) ถ้าเปลี่ยนให้ดูสรุปใหม่
     งานไฟล์แต่ละชิ้นพังได้โดยไม่ลากชิ้นอื่นพังตาม (จดไว้ใน ``report["errors"]``) และ json ที่รวมแล้ว
     กับบันทึกเขียนตอนท้ายเสมอ
@@ -760,9 +910,10 @@ def apply(plan_: dict, choices: dict) -> dict:
 
     ticked = set(choices.get("ask") or [])
     take_ids = set(choices.get("take_there") or [])
+    both_ids = set(choices.get("keep_both") or [])
     machine = choices.get("machine") or plan_["machine"]["default"]
     base_here, base_there = lineups_dir(here), lineups_dir(there)
-    jobs = _jobs(plan_, ticked, take_ids)
+    jobs = _jobs(plan_, ticked, take_ids, both_ids)
     _check_sources(jobs, base_here, base_there)
 
     bin_dir = _new_bin(here)
@@ -772,46 +923,29 @@ def apply(plan_: dict, choices: dict) -> dict:
         if (here / name).is_file():
             shutil.copy2(here / name, backup / name)
 
-    report = {"copied": 0, "renamed": 0, "removed": 0, "replaced": 0, "trash": str(bin_dir),
-              "errors": []}
-
-    for old, new in jobs["rename"]:
-        if _attempt(report, old, _relocate, base_here, old, new):
-            lib.migrate(here, old, new, record=False)
-            report["renamed"] += 1
-
-    for rel, record in jobs["remove"]:
-        if _attempt(report, rel, _to_trash, base_here, rel, bin_dir):
-            lib.migrate(here, rel, None, record=record)
-            report["removed"] += 1
-
-    alias = dict(plan_["alias"])
+    run = _Run(plan_, base_here, base_there, bin_dir)
+    run.renames(here, jobs["rename"])
+    run.removals(here, jobs["remove"])
     for rel, near in jobs["copy"]:
-        try:
-            dst_rel = _free_rel(base_here, near, rel) if near else rel
-        except OSError as exc:
-            report["errors"].append(f"{rel}: {exc}")
-            continue
-        if _attempt(report, rel, _copy_in, base_there, base_here, rel, dst_rel, bin_dir):
-            report["copied"] += 1
-            if dst_rel != rel:
-                alias[rel] = dst_rel          # ข้อมูลของ THERE ตามไปชื่อใหม่
-
-    replaced = set()
+        run.copy(rel, near, "copied")
     for key in jobs["replace"]:
-        if _attempt(report, key, _replace, base_here, base_there, key, bin_dir):
-            replaced.add(key)
-            report["replaced"] += 1
+        run.replace(key)
+    for key in jobs["keep_both"]:
+        # ก๊อปของ THERE มาเป็นอีกใบข้างๆ แล้วปล่อยข้อมูลที่พักไว้ให้ตามใบใหม่ไป
+        if run.copy(key, key, "kept_both"):
+            run.lifted.add(key)
 
     present = set(images(here))
     take = {(c["kind"], c["key"]) for c in plan_["conflicts"] if c["id"] in take_ids}
     there_data = _load_data(there)
+    held = set(plan_.get("hold") or []) - run.lifted
+    alias = run.alias
     merged, added, _conflicts = merge_data(
-        _load_data(here), _without(there_data, set(plan_.get("hold") or [])),
+        _load_data(here), _without(there_data, held | run.blocked),
         lambda key: alias.get(key, key),
         lambda key: not _is_image_key(key) or key in present,
         lambda kind, key: (kind, key) in take)
-    _take_held(merged, there_data, replaced)
+    _take_held(merged, there_data, run.replaced)
 
     if machine == "there":
         for key in MACHINE_VIEW_KEYS:
@@ -831,6 +965,8 @@ def apply(plan_: dict, choices: dict) -> dict:
         for name in plan_["config_differs"]:
             shutil.copy2(there / name, here / name)
 
-    journal.save(here, journal.union(journal.load(here), journal.load(there)))
-    report.update(added)
-    return report
+    # รายการที่ทำไม่สำเร็จไม่รวมเข้าบันทึกของที่นี่ — ยังเป็น "ของอีกเครื่อง" รอบหน้าจะได้ทำซ้ำ
+    theirs = [e for e in journal.load(there) if journal.key(e) not in run.unplayed]
+    journal.save(here, journal.union(journal.load(here), theirs))
+    run.report.update(added)
+    return run.report
