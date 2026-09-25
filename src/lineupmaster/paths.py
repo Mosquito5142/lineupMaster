@@ -13,6 +13,8 @@ config เป็นของที่ผู้ใช้แก้ตลอดเ�
 
 from __future__ import annotations
 
+import os
+import platform
 import sys
 from pathlib import Path
 
@@ -28,6 +30,11 @@ def _project_root() -> Path:
         return Path(sys.executable).resolve().parent
     # src/lineupmaster/paths.py -> ขึ้นไป 2 ชั้นคือรากโปรเจกต์
     return Path(__file__).resolve().parents[2]
+
+
+def machine_name() -> str:
+    """ชื่อเครื่องนี้ — ใช้บอกว่าโฟลเดอร์คลังเคยเปิดบนเครื่องไหน (ดู merge.py)."""
+    return os.environ.get("COMPUTERNAME") or platform.node() or ""
 
 
 ROOT = _project_root()

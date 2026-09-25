@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from . import journal
 from .index import IMAGE_SUFFIXES
 
 # ของพ่วงที่ผูกกับชื่อไฟล์ (ดู _read_note / _paired_gif ใน index.py)
@@ -102,14 +103,20 @@ def _rekey(path: Path, old: str, new: str | None, section: str | None = None) ->
         pass
 
 
-def migrate(root: Path, old_rel: str, new_rel: str | None) -> None:
+def migrate(root: Path, old_rel: str, new_rel: str | None, record: bool = True) -> None:
     """ย้ายหมุด/สถิติ/แท็กของไลน์อัพไปคีย์ใหม่ (new_rel = None คือลบทิ้ง).
 
     **ทุกไฟล์ที่คีย์ด้วย rel ต้องอยู่ในนี้ให้ครบ** ไม่งั้นเปลี่ยนชื่อรูปทีเดียวข้อมูลหลุดเงียบๆ
+
+    จดลง ``changes.json`` ด้วย (ดู journal.py) ตัวรวมคลังจะได้รู้ว่ารูปนี้ตั้งใจลบ/ย้าย ไม่ใช่
+    รูปใหม่ของอีกเครื่อง · ``record=False`` ใช้ตอนตัวรวมเล่นซ้ำการย้ายของอีกเครื่องเอง
+    (มีบันทึกของเครื่องนั้นอยู่แล้ว จดซ้ำจะได้รายการเดียวกันที่เวลาต่างกัน)
     """
     _rekey(root / "positions.json", old_rel, new_rel)
     _rekey(root / "last-view.json", old_rel, new_rel, section="uses")
     _rekey(root / "meta.json", old_rel, new_rel)
+    if record:
+        journal.record(root, old_rel, new_rel)
 
 
 # -- คำสั่งหลัก -----------------------------------------------------------
