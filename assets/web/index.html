@@ -17,6 +17,7 @@
 
   <div class="top-actions">
     <button id="btn-unpinned" class="chip" type="button">ยังไม่จิ้มหมุด 0</button>
+    <button id="btn-curate" type="button" title="ไลน์อัพที่โหลดจากเว็บมาทั้งกอง — จัดกลุ่มตามเป้าหมายแล้วคัดให้เหลือใบที่ดี">คัดใบซ้ำ…</button>
     <button id="btn-merge" type="button" title="เอาของจากโฟลเดอร์ LineupMaster อีกชุดมารวม โดยไม่ทับของที่นี่">รวมคลัง…</button>
     <button id="btn-add" class="primary" type="button">เพิ่มรูปเข้าคลัง</button>
   </div>
@@ -405,6 +406,50 @@
   </section>
 </dialog>
 
+<!-- กล่องคัดใบซ้ำ (curate.js) — เลือกตัวละคร → คัดทีละกลุ่ม → สรุปแล้วทิ้งเข้า .trash -->
+<dialog id="curate-dialog" class="curate">
+  <h2>คัดใบซ้ำ</h2>
+
+  <section id="cur-pick">
+    <p class="hint">จัดกลุ่มไลน์อัพที่โหลดมาจากหน้า "หาไลน์อัพจากเว็บ" ตาม <b>แมพ × ฝั่ง × สกิล × โซนที่สกิลไปตก</b>
+      แล้วเสนอใบที่ดีที่สุดของแต่ละกลุ่ม (★/เคยใช้ → ขั้นน้อย → มีหมุดครบ) ให้กดยืนยันทีละกลุ่ม ·
+      ใบที่วางเข้าคลังเองไม่ถูกแตะ</p>
+    <div class="row">
+      <label>ตัวละคร <select id="cur-agent"></select></label>
+      <label>เก็บกลุ่มละ <select id="cur-keep"><option value="1">1 ใบ</option><option value="2">2 ใบ</option></select></label>
+    </div>
+    <label class="check"><input id="cur-singles" type="checkbox"> ดูกลุ่มที่มีใบเดียวด้วย (ไว้ทิ้งใบเดี่ยวที่ไม่อยากได้)</label>
+    <menu>
+      <button type="button" data-cur-close>ปิด</button>
+      <button id="cur-start" type="button" class="primary">เริ่มคัด</button>
+    </menu>
+  </section>
+
+  <section id="cur-review" hidden>
+    <p id="cur-head" class="cur-head"></p>
+    <div id="cur-items" class="cur-items"></div>
+    <p class="hint"><kbd>1</kbd>–<kbd>9</kbd> สลับเก็บ/ทิ้ง · <kbd>Enter</kbd> ยืนยันไปกลุ่มถัดไป ·
+      <kbd>0</kbd> ทิ้งทั้งกลุ่ม · <kbd>Backspace</kbd> กลับ · <kbd>S</kbd> ข้าม · คลิกรูป = ดูเต็ม ·
+      <b id="cur-count"></b></p>
+    <menu>
+      <button id="cur-back" type="button">← กลับ</button>
+      <button id="cur-skip" type="button">ข้าม</button>
+      <button id="cur-drop-all" type="button">ทิ้งทั้งกลุ่ม</button>
+      <button id="cur-finish" type="button">ไปหน้าสรุป</button>
+      <button id="cur-ok" type="button" class="primary">ยืนยัน →</button>
+    </menu>
+  </section>
+
+  <section id="cur-done" hidden>
+    <ul id="cur-summary" class="merge-summary"></ul>
+    <menu>
+      <button type="button" data-cur-close>ปิด (จำความคืบหน้าไว้)</button>
+      <button id="cur-review-again" type="button">กลับไปคัดต่อ</button>
+      <button id="cur-apply" type="button" class="primary danger">ย้ายใบที่ทิ้งเข้า .trash</button>
+    </menu>
+  </section>
+</dialog>
+
 <p id="toast" class="toast" hidden></p>
 <p class="dropzone-hint">ลากไฟล์รูปมาวางในหน้านี้ หรือกด Ctrl+V วางจากคลิปบอร์ดได้เลย</p>
 
@@ -414,5 +459,6 @@
 <script src="source.js"></script>
 <script src="merge.js"></script>
 <script src="settings.js"></script>
+<script src="curate.js"></script>
 </body>
 </html>

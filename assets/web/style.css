@@ -773,3 +773,22 @@ p.merge-error { margin: 12px 0 0; font-size: 12px; }
 @media (max-width: 640px) {
   .set-row { grid-template-columns: 1fr; }
 }
+
+/* ================= คัดใบซ้ำ (curate.js) ================= */
+dialog.curate { width: min(1180px, 96vw); max-height: 92vh; overflow: auto; }
+dialog.curate label.check { flex-direction: row; align-items: center; gap: 7px; margin-top: 10px; color: var(--ink); }
+.cur-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin: 8px 0; font-size: 13px; }
+.cur-head span { color: var(--ink-2); font-size: 12px; }
+.cur-items { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; }
+.cur-card {
+  margin: 0; flex: 0 0 min(360px, 80vw); background: var(--sheet); cursor: pointer;
+  box-shadow: inset 0 0 0 2px transparent; opacity: .55; transition: opacity .12s;
+}
+.cur-card.keep { opacity: 1; box-shadow: inset 0 0 0 3px var(--stand); }
+.cur-card img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: var(--glass); cursor: zoom-in; }
+.cur-card figcaption { padding: 6px 8px; font-size: 11.5px; color: var(--ink-2); }
+.cur-card figcaption b { color: var(--ink); }
+.cur-card kbd, dialog.curate kbd {
+  display: inline-block; min-width: 16px; padding: 0 4px; text-align: center; font: inherit; font-size: 11px;
+  background: var(--sheet-2); border: 1px solid var(--edge); border-radius: var(--r);
+}

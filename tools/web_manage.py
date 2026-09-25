@@ -38,6 +38,7 @@ sys.path.insert(0, str(_HERE / "src"))
 
 from lineupmaster import callouts as callout_mod  # noqa: E402
 from lineupmaster import config as config_mod  # noqa: E402
+from lineupmaster import curate as curate_mod  # noqa: E402
 from lineupmaster import index as index_mod  # noqa: E402
 from lineupmaster import library as lib  # noqa: E402
 from lineupmaster import merge as merge_mod  # noqa: E402
@@ -317,6 +318,87 @@ class Store:
             raise ValueError(f"ไม่เจอโฟลเดอร์นี้: {raw}")
         self.merge_plan = merge_mod.plan(ROOT, folder)
         return self.merge_plan
+
+    # -- คัดใบซ้ำ (lineupmaster/curate.py) — ของที่โหลดจากเว็บมาทั้งกอง ให้เหลือไม่กี่ใบต่อเป้า --------
+    def _curate_file(self, agent: str) -> Path:
+        safe = "".join(ch for ch in agent.lower() if ch.isalnum()) or "none"
+        return ROOT / ".cache" / f"curate-{safe}.json"
+
+    def curate_decisions(self, agent: str) -> dict:
+        try:
+            data = json.loads(self._curate_file(agent).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _curate_entries(self, agent: str, catalog: list[dict]) -> list[dict]:
+        """ใบของตัวละครนี้ที่มาจากหน้าหาไลน์อัพ — จับคู่กับแคตตาล็อกผ่าน browse.json ("เอามาแล้ว")."""
+        lineups = [{"rel": lu.rel, "map": lu.map, "side": lu.side, "agent": lu.agent or "sova",
+                    "fav": bool(lu.fav), "stem": lu.stem} for lu in self.lineups]
+        try:
+            uses = json.loads((ROOT / "last-view.json").read_text(encoding="utf-8")).get("uses") or {}
+        except (OSError, ValueError, AttributeError):
+            uses = {}
+        return curate_mod.build_entries(
+            agent, lineups, source_mod.read_decisions(ROOT / "browse.json")["taken"],
+            {e["uid"]: e for e in catalog},
+            self.positions, uses, source_mod.ability_tag)
+
+    def curate_agents(self, catalog: list[dict]) -> dict:
+        agents = sorted({lu.agent or "sova" for lu in self.lineups})
+        out = []
+        for agent in agents:
+            count = len(self._curate_entries(agent, catalog))
+            if count:
+                out.append({"agent": agent, "th": AGENT_TH.get(agent, agent), "count": count})
+        return {"agents": out}
+
+    def curate_state(self, catalog: list[dict], agent: str, keep: int, singles: bool) -> dict:
+        entries = self._curate_entries(agent, catalog)
+        return {"groups": curate_mod.groups(entries, keep=keep, singles=singles),
+                "decisions": self.curate_decisions(agent), "total": len(entries),
+                "abilities": ABILITY_TH}
+
+    def curate_decide(self, agent: str, key: str, keep: list | None) -> dict:
+        """จำว่ากลุ่มนี้เก็บใบไหน — ``keep=None`` = ลบการตัดสินทิ้ง (กลับไปเป็น "ยังไม่ตัดสิน")."""
+        decisions = self.curate_decisions(agent)
+        if keep is None:
+            decisions.pop(key, None)
+        else:
+            decisions[key] = [str(rel) for rel in keep]
+        path = self._curate_file(agent)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(decisions, ensure_ascii=False, indent=1), encoding="utf-8")
+        return {"decisions": decisions}
+
+    def curate_apply(self, catalog: list[dict], agent: str) -> dict:
+        """ทิ้งใบที่ไม่ได้เลือกในกลุ่มที่ตัดสินแล้ว (เข้า .trash ผ่าน library.remove = จดบันทึก/กู้ได้)
+        แล้วเติมแท็กสกิลจากเว็บให้ใบที่เหลือของตัวละครนี้ที่ยังไม่มีแท็ก."""
+        entries = self._curate_entries(agent, catalog)
+        drop = set(curate_mod.drops(curate_mod.groups(entries, singles=True),
+                                    self.curate_decisions(agent)))
+        tagged = 0
+        for item in entries:
+            lu = self.find(item["rel"])
+            if item["rel"] in drop or lu is None or lu.ability or item["ability"] not in ABILITY_TH:
+                continue
+            meta_mod.set_fields(self.meta, item["rel"], ability=item["ability"])
+            tagged += 1
+        if tagged and not meta_mod.save(ROOT / "meta.json", self.meta):
+            raise OSError("เซฟ meta.json ไม่สำเร็จ")
+        removed, errors = 0, []
+        for rel in sorted(drop):
+            lu = self.find(rel)
+            if lu is None:
+                continue
+            try:
+                lib.remove(ROOT, self.cfg.lineups_dir, lu.path)
+                removed += 1
+            except OSError as error:
+                errors.append(f"{rel}: {error}")
+        self._curate_file(agent).unlink(missing_ok=True)
+        self.reload()
+        return {"removed": removed, "tagged": tagged, "errors": errors}
 
     # -- หน้าตั้งค่า (settings.json ทับ config.yaml — ดู lineupmaster/settings.py) --------
     def settings_state(self) -> dict:
@@ -660,6 +742,17 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/settings/live":
             self._json(store.settings_live())     # อ่านไฟล์เล็กไฟล์เดียว ไม่แตะ Store — ไม่ถือล็อก
             return
+        if route in ("/api/curate/agents", "/api/curate"):
+            catalog = self.source.catalog()       # โหลดครั้งแรกอาจช้า — ทำนอกล็อก
+            with store.lock:
+                if route == "/api/curate/agents":
+                    self._json(store.curate_agents(catalog))
+                else:
+                    keep = int((query.get("keep") or ["1"])[0] or 1)
+                    singles = (query.get("singles") or ["0"])[0] == "1"
+                    self._json(store.curate_state(catalog, (query.get("agent") or [""])[0],
+                                                  max(1, min(3, keep)), singles))
+            return
         if route == "/api/merge/candidates":
             # สแกนโฟลเดอร์ในเครื่องนาน และไม่แตะข้อมูลของ Store — ไม่ถือล็อก หน้าเว็บจะได้ไม่ค้าง
             self._json(store.merge_candidates())
@@ -775,6 +868,11 @@ class Handler(BaseHTTPRequestHandler):
             self._json(self.source.take(store, body))
         elif route == "/api/source/skip":
             self._json(self.source.skip(body.get("uid") or body.get("id")))
+        elif route == "/api/curate/decide":
+            self._json(store.curate_decide(str(body.get("agent") or ""), str(body.get("key") or ""),
+                                           body.get("keep")))
+        elif route == "/api/curate/apply":
+            self._json(store.curate_apply(self.source.catalog(), str(body.get("agent") or "")))
         elif route == "/api/settings/set":
             self._json(store.settings_set(body.get("key"), body.get("value")))
         elif route == "/api/settings/reset":
