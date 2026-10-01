@@ -8,7 +8,7 @@
 ทุกอย่างวิ่งผ่าน ``lineupmaster.library`` (move/rename/remove) — หมุด/แท็กตามไปเอง, จดลง changes.json
 (รวมคลังข้ามเครื่องแล้วไม่ฟื้น), ใบที่ตัดเข้า .trash กู้คืนได้ · json เดิมสำรองไว้ใน .trash/<เวลา>-<agent>-review/_json/
 
-    python tools/apply_review.py --root dist/LineupMaster --agent kayo [--dry-run]
+    python tools/apply_review.py --root dist/LineupMaster/data --agent kayo [--dry-run]
 
 ก่อนแก้จะตรวจผลให้ก่อน (ครบทุกใบใน input · พิกัด 0–1 · ใบที่ถูกอ้างว่า "ซ้ำ" ต้องถูกเก็บ) ไม่ผ่าน = ไม่แตะอะไร
 แก้เสร็จจดใบที่ตรวจแล้วลง ``done.json`` — review_prepare.py รอบหน้าจะข้ามใบพวกนี้

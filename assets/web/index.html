@@ -5,39 +5,57 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LineupMaster — จัดการคลัง</title>
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
 
+<!-- เมนูซ้าย (shell.js) — ปุ่ม .tab = แท็บจริง (source.js สลับหน้า) · ที่เหลือเป็นทางลัดตัวกรอง/เครื่องมือ -->
+<aside class="side">
+  <div class="side-brand">
+    <svg class="logo" viewBox="0 0 100 100" aria-hidden="true"><path d="M14 4H86L96 14V62L50 98L4 62V14Z" fill="#FF4655"/><rect x="46" y="16" width="8" height="50" fill="#0F1923"/><rect x="25" y="37" width="50" height="8" fill="#0F1923"/><circle cx="50" cy="41" r="7" fill="#FF4655"/></svg>
+    <span>LineupMaster</span>
+  </div>
+  <nav class="side-nav">
+    <button class="tab side-item on" type="button" data-tab="library"><i class="ico" style="--i:url(icons/archive.svg)"></i>คลังของฉัน<b id="side-all" class="side-count"></b></button>
+    <button id="side-flag" class="side-item" type="button"><i class="ico" style="--i:url(icons/flag.svg)"></i>ต้องแก้<b id="side-flag-count" class="side-count flag"></b></button>
+    <button id="btn-unpinned" class="side-item" type="button" title="ใบที่ยังไม่ปักหมุด หรือยังไม่ได้ตั้งว่าเป็นสกิลอะไร"><i class="ico" style="--i:url(icons/star.svg)"></i>ยังไม่ปักหมุด<b id="unpinned-count" class="side-count pin"></b></button>
+    <button class="tab side-item" type="button" data-tab="coverage" title="แผนที่เต็มจอของคลังเรา — ดูว่ายังขาดไลน์อัพตรงไหน สถานการณ์ไหน"><i class="ico" style="--i:url(icons/layout-grid.svg)"></i>ไลน์อัพที่ยังขาด</button>
+    <button class="tab side-item" type="button" data-tab="community"><i class="ico" style="--i:url(icons/users.svg)"></i>คอมมูนิตี้</button>
+    <button class="tab side-item" type="button" data-tab="source"><i class="ico" style="--i:url(icons/world-download.svg)"></i>นำเข้าจากเว็บ</button>
+    <p class="side-head">เครื่องมือ</p>
+    <button id="btn-curate" class="side-item" type="button" title="ไลน์อัพที่โหลดจากเว็บมาทั้งกอง — จัดกลุ่มตามเป้าหมายแล้วคัดให้เหลือใบที่ดี"><i class="ico" style="--i:url(icons/tool.svg)"></i>คัดใบซ้ำ</button>
+    <button id="btn-merge" class="side-item" type="button" title="เอาของจากโฟลเดอร์ LineupMaster อีกชุดมารวม โดยไม่ทับของที่นี่"><i class="ico" style="--i:url(icons/layout-grid.svg)"></i>รวมคลังจากเครื่องอื่น</button>
+  </nav>
+  <button class="tab side-item side-bottom" type="button" data-tab="settings"><i class="ico" style="--i:url(icons/settings.svg)"></i>ตั้งค่า</button>
+</aside>
+
 <header class="top">
-  <div class="brand"><h1>LineupMaster</h1></div>
-  <span class="divider"></span>
   <p id="subtitle" class="count">กำลังโหลด…</p>
-
-  <input id="search" class="search" type="search" placeholder="ค้นหาชื่อไลน์อัพ เช่น เช็คBใน" autocomplete="off">
-
+  <label class="search-box"><i class="ico" style="--i:url(icons/search.svg)"></i>
+    <input id="search" class="search" type="search" placeholder="ค้นหาชื่อไลน์อัพ เช่น A Lobby" autocomplete="off"></label>
   <div class="top-actions">
-    <button id="btn-unpinned" class="chip" type="button">ยังไม่จิ้มหมุด 0</button>
-    <button id="btn-curate" type="button" title="ไลน์อัพที่โหลดจากเว็บมาทั้งกอง — จัดกลุ่มตามเป้าหมายแล้วคัดให้เหลือใบที่ดี">คัดใบซ้ำ…</button>
-    <button id="btn-merge" type="button" title="เอาของจากโฟลเดอร์ LineupMaster อีกชุดมารวม โดยไม่ทับของที่นี่">รวมคลัง…</button>
-    <button id="btn-add" class="primary" type="button">เพิ่มรูปเข้าคลัง</button>
+    <button id="btn-add" class="primary" type="button"><i class="ico" style="--i:url(icons/plus.svg)"></i>เพิ่มไลน์อัพ</button>
   </div>
 </header>
-
-<nav class="tabs">
-  <button class="tab on" type="button" data-tab="library">คลังของเรา</button>
-  <button class="tab" type="button" data-tab="source">หาไลน์อัพจากเว็บ</button>
-  <button class="tab" type="button" data-tab="settings">ตั้งค่า</button>
-</nav>
 
 <div id="tab-library">
 <nav class="filters">
   <label>แมพ <select id="f-map"></select></label>
   <label>ฝั่ง <select id="f-side"></select></label>
   <label>จุด <select id="f-site"></select></label>
-  <label>ตัวละคร <select id="f-agent"></select></label>
-  <label>สกิล <select id="f-ability"></select></label>
+  <label class="face-select">ตัวละคร <select id="f-agent"></select></label>
+  <div class="agent-pick">
+    <button id="agent-btn" class="agent-btn" type="button" aria-haspopup="true" title="เลือกตัวละคร"></button>
+    <div id="agent-pop" class="agent-pop" hidden>
+      <input id="agent-search" type="search" placeholder="ค้นหาตัวละคร" autocomplete="off">
+      <div id="agent-grid" class="agent-grid"></div>
+    </div>
+  </div>
+  <label class="face-select">สกิล <select id="f-ability"></select></label>
+  <div id="f-abils" class="face-row" aria-label="สกิล"></div>
   <label>แท็ก <select id="f-tag"></select></label>
   <button id="f-fav" class="chip toggle" type="button">★ ไม้ตาย</button>
+  <button id="f-flag" class="chip toggle flag" type="button" title="ใบที่กด F8 แจ้งผิดไว้ระหว่างเล่น — แก้หมุด/วาด/ลบ แล้วติ๊ก ⚑ ออก">⚑ ต้องแก้ <span id="flag-count">0</span></button>
   <button id="f-reset" class="chip" type="button">ล้างตัวกรอง</button>
   <span class="spacer"></span>
   <button id="btn-prev" class="icon" type="button" title="ใบก่อนหน้าในรายการที่กรองอยู่ (Alt+←)">‹</button>
@@ -74,6 +92,9 @@
             <button class="icon" type="button" data-pv="in" title="ซูมเข้า">+</button>
             <button class="icon" type="button" data-pv="fit" title="พอดีกรอบ (หรือดับเบิลคลิกบนรูป)">⛶</button>
             <span class="hint">ลากเพื่อเลื่อน หมุนลูกกลิ้งเพื่อซูม — ส่องมินิแมพในรูปได้</span>
+            <span class="spacer"></span>
+            <button id="btn-draw" class="chip" type="button" title="วาดลูกศร/วง/เขียนข้อความทับรูป แล้วบันทึกลงไฟล์จริง (รูปเดิมสำรองไว้)">✎ วาด</button>
+            <button id="btn-revert" class="chip" type="button" title="เอารูปก่อนวาดทับกลับมา (รูปที่วาดไว้ย้ายเข้า .trash)" hidden>↺ รูปเดิม</button>
           </div>
           <div class="previewstage" id="preview-stage">
             <img id="preview-img" alt="">
@@ -94,7 +115,10 @@
             <input class="mv-rot size-slider" type="range" min="0" max="359" value="0" title="หมุนแผนที่ (หมุนแค่ภาพที่เห็น พิกัดที่เก็บไม่ขยับ)">
             <span class="mv-deg hint">0°</span>
             <button class="icon" type="button" data-mv="cw" title="หมุนขวา 15°">↻</button>
-            <button class="icon" type="button" data-mv="rot0" title="เลิกหมุน กลับ 0°">0°</button>
+            <button class="icon" type="button" data-mv="rot0" title="กลับทิศตามฝั่ง — จุดเกิดฝั่งเราอยู่ล่าง (เหมือนมินิแมพในเกม)">↺</button>
+          </div>
+          <div id="pin-steps" class="pin-steps" data-step="1">
+            <span><b>1</b>คลิกจุดยืน</span><i></i><span><b>2</b>คลิกจุดตก</span><i></i><span><b>3</b>ปักครบ</span>
           </div>
           <div class="mapstage" id="lib-mapstage"></div>
           <div class="mapbar">
@@ -125,8 +149,10 @@
         </div>
 
         <div class="row">
-          <label>สกิล <select id="e-ability"></select></label>
+          <label class="face-select">สกิล <select id="e-ability"></select></label>
+          <div class="e-abil-box"><span class="hint">สกิล</span><div id="e-abils" class="face-row"></div></div>
           <label><input id="e-fav" type="checkbox"> ★ ไม้ตาย</label>
+          <label class="flag-check"><input id="e-flag" type="checkbox"> ⚑ ต้องแก้</label>
           <label class="grow">แท็ก
             <input id="e-tags" type="text" placeholder="คั่นด้วยเว้นวรรค เช่น post-plant anti-cypher">
           </label>
@@ -135,9 +161,19 @@
         <label class="hint" for="e-note">โน้ต — มีโน้ตแล้วจอที่สองจะโชว์โน้ตแทนชื่อไฟล์</label>
         <textarea id="e-note" rows="2"></textarea>
 
+        <div class="howto-head">
+          <label class="hint" for="e-howto">วิธียิง — เสียงพูดอ่านต่อท้ายชื่อตอนเลือกใบนี้ในเกม
+            <button type="button" id="btn-howto-play" class="chip small" title="ฟังประโยคที่เกมจะพูด (ใช้ข้อความในช่องตอนนี้ ยังไม่ต้องบันทึก) — เว้นวรรค/ใส่จุลภาคเพื่อให้หยุดหายใจ">▶ ฟัง</button></label>
+          <span id="howto-ai" class="howto-ai" hidden>ร่างจาก AI ยังไม่ได้ตรวจ
+            <button type="button" id="btn-howto-ok" class="chip small" title="ดูรูปแล้วถูกต้อง — เอาป้ายออก">✓ ถูกแล้ว</button></span>
+        </div>
+        <textarea id="e-howto" rows="2" placeholder="เช่น ยืนชิดกล่อง เล็งยอดเสา ชาร์จสองขีด เด้งหนึ่ง"></textarea>
+
         <div class="form-actions">
           <button type="submit" class="primary">บันทึกการแก้ไข</button>
+          <button type="button" id="btn-share" title="แชร์ใบนี้ให้เพื่อนในคอมมูนิตี้ (เฉพาะรูปที่ทำเอง + ปักหมุดแล้ว)">⇪ แชร์ขึ้นคอมมูนิตี้</button>
           <span class="spacer"></span>
+          <button type="button" id="btn-unflag-next" hidden title="ติ๊ก ⚑ ออก บันทึก แล้วไปใบที่ต้องแก้ถัดไป">⚑ แก้เสร็จ เอาธงออก → ใบถัดไป</button>
           <button type="button" id="btn-delete" class="danger">ลบใบนี้</button>
         </div>
       </form>
@@ -174,7 +210,16 @@
     <span id="s-count" class="count"></span>
   </nav>
 
-  <details id="s-zonebox" class="pinbox wide-box">
+  <!-- นำเข้าจากคลิป YouTube (clip.js · lineupmaster/clipgrab.py) -->
+  <div class="clipbar">
+    <b>▶ จากคลิป YouTube</b>
+    <input id="s-cliplink" type="text" placeholder="วางลิงก์ที่ติดเวลา เช่น จากปุ่มแชร์ใน ValoPlant: https://youtu.be/…?t=376">
+    <button id="s-clipgo" class="chip primary" type="button">เปิดคลิป</button>
+    <span id="s-clipstate" class="hint"></span>
+  </div>
+
+  <!-- ย้ายไปหน้า "หาไลน์อัพเพิ่ม" แล้ว (ผู้ใช้: เล็ก ดันรูปลง เบียดจอแต่งรูป) — ซ่อนไว้ โค้ดเดิมยังอ้างถึงอยู่ -->
+  <details id="s-zonebox" class="pinbox wide-box" hidden>
     <summary>กรองด้วยการจิ้มบนแผนที่ <span id="s-zonestate" class="hint">ยังไม่ได้เลือก</span></summary>
     <div class="mapbar">
       <button class="icon" type="button" data-mv="out" title="ซูมออก">−</button>
@@ -186,7 +231,7 @@
       <input class="mv-rot size-slider" type="range" min="0" max="359" value="0" title="หมุนแผนที่ (หมุนแค่ภาพที่เห็น ไม่กระทบตัวกรอง)">
       <span class="mv-deg hint">0°</span>
       <button class="icon" type="button" data-mv="cw" title="หมุนขวา 15°">↻</button>
-      <button class="icon" type="button" data-mv="rot0" title="เลิกหมุน กลับ 0°">0°</button>
+      <button class="icon" type="button" data-mv="rot0" title="กลับทิศตามฝั่ง — จุดเกิดฝั่งเราอยู่ล่าง (เหมือนมินิแมพในเกม)">↺</button>
       <span class="spacer"></span>
       <span id="s-zonehint" class="hint">คลิกวงกลมครั้งแรกได้ต้นทาง คลิกอีกครั้งได้ปลายทาง</span>
       <button id="s-zoneclear" class="icon danger" type="button" title="ล้างตัวกรองต้นทาง/ปลายทาง">🗑</button>
@@ -216,7 +261,7 @@
   </section>
 
   <div class="source-body" id="s-onepane">
-    <section class="sheetpane">
+    <section class="sheetpane" id="s-sheetpane">
       <div class="sheetbar">
         <div class="tool-group" id="tools">
           <button class="icon tool on" type="button" data-tool="none" title="ย้าย / ย่อขยายรูป — คลิกเลือกรูป แล้วลากกลางรูปเพื่อย้าย ลากมุมเพื่อย่อขยาย">✥</button>
@@ -237,6 +282,23 @@
       <div class="sheetwrap">
         <canvas id="sheet"></canvas>
         <p id="s-loading" class="sheet-loading">กำลังโหลด…</p>
+      </div>
+
+      <!-- เฟรมจากคลิป — คลิกเฟรมไหนเฟรมนั้นเข้าไปเป็นช่องในแผ่น (คลิกซ้ำ = เอาออก) -->
+      <div id="s-clippane" class="clippane" hidden>
+        <div class="clipinfo"><b>เฟรมจากคลิป</b> <span class="hint">คลิกเลือกเฟรมยืน → เล็ง → ผล เรียงตามลำดับที่คลิก · คลิกซ้ำเพื่อเอาออก</span></div>
+        <div id="s-frames" class="framestrip"></div>
+        <div class="gifbar">
+          <button id="s-gifauto" class="chip primary" type="button" title="เดาจังหวะปล่อยลูกให้ (ช่วงเล็งนิ่งแล้วภาพเปลี่ยนแรง) — ไม่ตรงก็ตั้งช่วงเองได้">✨ หาช่วงยิงให้</button>
+          <button id="s-gifmode" class="chip" type="button" title="กดแล้วคลิกเฟรมเริ่ม กับเฟรมจบของช่วงยิง (ไม่เกิน 6 วิ)">🎞 ตั้งช่วง GIF เอง</button>
+          <span id="s-gifrange" class="hint">GIF ช่วงยิง: ยังไม่ได้ตั้ง — ในเกมกด numpad * ดูได้</span>
+          <button id="s-gifplay" class="chip" type="button" hidden>▶ ดูตัวอย่าง</button>
+          <button id="s-gifclear" class="chip small" type="button" hidden>✗ ไม่เอา GIF</button>
+          <label class="inline" title="ไม่ทำรูปนิ่ง — ไลน์อัพใบนี้เป็นภาพเคลื่อนไหวอย่างเดียว ในเกมซูมแล้วเล่นเลย">
+            <input id="s-animonly" type="checkbox"> เก็บแค่ภาพเคลื่อนไหว (ไม่มีรูปนิ่ง)</label>
+        </div>
+        <img id="s-gifprev" class="gifprev" alt="" hidden>
+        <p id="s-subs" class="hint clipsubs"></p>
       </div>
 
       <div class="sheetbar">
@@ -262,6 +324,39 @@
       </div>
     </section>
 
+    <!-- หน้าทำวิดีโอ — ใบจากคลิป YouTube/ValoPlant (video.js · clipgrab.open_video/render) -->
+    <section id="s-videopane" class="videopane" hidden>
+      <div class="videowrap">
+        <video id="v-player" muted playsinline preload="auto"></video>
+        <p id="v-loading" class="sheet-loading" hidden>กำลังโหลดคลิป…</p>
+      </div>
+      <div class="vbar">
+        <button id="v-play" class="icon" type="button" title="เล่น / หยุด (Space)">▶</button>
+        <button id="v-prev" class="icon" type="button" title="ถอยทีละเฟรม (←) · กด Shift = ทีละ 1 วิ">◀|</button>
+        <button id="v-next" class="icon" type="button" title="เดินหน้าทีละเฟรม (→) · กด Shift = ทีละ 1 วิ">|▶</button>
+        <span id="v-time" class="count">0:00.0 / 0:00.0</span>
+        <span class="spacer"></span>
+        <span id="v-len" class="vlen"></span>
+      </div>
+      <canvas id="v-timeline" class="vtimeline"></canvas>
+      <div class="vbar">
+        <button id="v-auto" class="chip primary" type="button" title="เดาช่วงให้: ต้นท่าถึง 3 วิหลังปล่อยลูก · ช่วงเล็งนิ่งนานเร่ง ×4">✨ หาช่วงให้</button>
+        <button id="v-in" class="chip" type="button" title="ตั้งจุดเริ่มที่เฟรมนี้ (I)">⇤ จุดเริ่ม</button>
+        <button id="v-out" class="chip" type="button" title="ตั้งจุดจบที่เฟรมนี้ (O)">จุดจบ ⇥</button>
+        <span class="divider"></span>
+        <span class="hint">ช่วงที่ลากเลือก</span>
+        <button id="v-x2" class="chip" type="button" title="เร่ง 2 เท่า">×2</button>
+        <button id="v-x4" class="chip" type="button" title="เร่ง 4 เท่า">×4</button>
+        <button id="v-cut" class="chip danger" type="button" title="ข้ามช่วงนี้ไปเลย">✂ ตัดข้าม</button>
+        <button id="v-x1" class="chip" type="button" title="กลับเป็นความเร็วปกติ">×1</button>
+        <button id="v-reset" class="chip small" type="button" title="ล้างการเร่ง/ตัดทั้งหมด (จุดเริ่ม/จบคงเดิม)">ล้างทั้งหมด</button>
+        <span class="spacer"></span>
+        <button id="v-preview" class="chip primary" type="button" title="เล่นตามที่ตั้งไว้จริง (เร่ง/ข้ามให้)">👁 ดูตัวอย่าง</button>
+      </div>
+      <p class="hint">คลิก/ลากบนแถบเวลา = เลื่อนไปดู · ลากเส้นแดง = จุดเริ่ม/จบ · ลากเป็นช่วงแล้วกด ×2 ×4 หรือตัดข้าม ·
+        คลิกช่วงที่ตั้งไว้แล้วกด ×1 = ล้าง · Space เล่น · ←→ ทีละเฟรม · I / O ตั้งจุดเริ่ม/จบ</p>
+    </section>
+
     <aside class="sourceside">
       <h2 id="s-title">—</h2>
       <p id="s-meta" class="hint"></p>
@@ -273,7 +368,14 @@
         <label>ฝั่ง <select id="s-destside"></select></label>
         <label>จุด <select id="s-destsite"></select></label>
         <label>ตัวละคร <select id="s-destagent"></select></label>
+        <label>สกิล <select id="s-destability"></select></label>
         <p id="s-dest" class="dest"></p>
+      </div>
+
+      <div id="s-howtobox" class="howtobox" hidden>
+        <label>วิธียิง (ในเกมอ่านออกเสียง)
+          <textarea id="s-howto" rows="3" placeholder="เช่น ยืนชิดกล่อง เล็งขอบหลังคา ชาร์จ 1.5 เด้ง 1"></textarea></label>
+        <p id="s-vsubs" class="hint clipsubs"></p>
       </div>
 
       <details id="s-pinbox" class="pinbox" open>
@@ -288,7 +390,7 @@
             <input class="mv-rot size-slider" type="range" min="0" max="359" value="0" title="หมุนแผนที่ (หมุนแค่ภาพที่เห็น พิกัดที่เก็บไม่ขยับ)">
             <span class="mv-deg hint">0°</span>
             <button class="icon" type="button" data-mv="cw" title="หมุนขวา 15°">↻</button>
-            <button class="icon" type="button" data-mv="rot0" title="เลิกหมุน กลับ 0°">0°</button>
+            <button class="icon" type="button" data-mv="rot0" title="กลับทิศตามฝั่ง — จุดเกิดฝั่งเราอยู่ล่าง (เหมือนมินิแมพในเกม)">↺</button>
         </div>
         <div class="mapstage small" id="src-mapstage"></div>
         <div class="mapbar">
@@ -313,6 +415,87 @@
   </div>
 </div><!-- /tab-source -->
 
+<!-- แท็บคอมมูนิตี้ (community.js) — แชร์/เอาไลน์อัพของเพื่อน + คะแนน "ใช้ได้จริง" -->
+<!-- แผนที่รวม (coverage.js) — โซนไหนมี/ไม่มีไลน์อัพ ตามตัวละคร/สกิล/แมพ/ฝั่งที่เลือก -->
+<div id="tab-coverage" hidden>
+  <nav class="filters">
+    <label>แมพ <select id="cv-map"></select></label>
+    <label>ฝั่ง <select id="cv-side"></select></label>
+    <label>ตัวละคร <select id="cv-agent"></select></label>
+    <label>สกิล <select id="cv-ability"></select></label>
+    <label>นับจาก <select id="cv-count">
+      <option value="from">จุดยืน (ยืนตรงนี้ยิงได้ไหม)</option>
+      <option value="to">จุดตก (ยิงไปถึงตรงนี้ได้ไหม)</option>
+    </select></label>
+    <span class="spacer"></span>
+    <span id="cv-summary" class="count"></span>
+  </nav>
+  <div class="cv-body">
+    <section class="cv-mappane">
+      <div class="mapbar">
+        <button class="icon" type="button" data-mv="out" title="ซูมออก">−</button>
+        <span class="mv-zoom hint">100%</span>
+        <button class="icon" type="button" data-mv="in" title="ซูมเข้า">+</button>
+        <button class="icon" type="button" data-mv="fit" title="พอดีจอ (หรือดับเบิลคลิกบนแผนที่)">⛶</button>
+        <span class="divider"></span>
+        <button class="icon" type="button" data-mv="ccw" title="หมุนซ้าย 15°">↺</button>
+        <input class="mv-rot size-slider" type="range" min="0" max="359" value="0" title="หมุนแผนที่">
+        <span class="mv-deg hint">0°</span>
+        <button class="icon" type="button" data-mv="cw" title="หมุนขวา 15°">↻</button>
+        <button class="icon" type="button" data-mv="rot0" title="กลับทิศตามฝั่ง">↺</button>
+        <span class="spacer"></span>
+        <span class="hint"><b style="color:#ff5a5a">●</b> ยังไม่มี · <b style="color:#7dd3fc">●</b> มีบ้าง · <b style="color:#4ade80">●</b> มีเยอะ</span>
+      </div>
+      <div id="cv-stage" class="mapstage cv-stage"></div>
+    </section>
+    <aside class="cv-side">
+      <h3>ยังขาดอะไร <small class="hint">(คลิกช่องดูบนแผนที่)</small></h3>
+      <table id="cv-table" class="cv-table"></table>
+      <h3>โซนที่ยังไม่มีไลน์อัพ</h3>
+      <div id="cv-empty" class="cv-empty"></div>
+      <p class="hint cv-howto">คลิกวงบนแผนที่เพื่อดูใบในโซนนั้น</p>
+      <section id="cv-zonebox" hidden>
+        <h3 id="cv-zone"></h3>
+        <div id="cv-list" class="cv-list"></div>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<div id="tab-community" hidden>
+  <div class="com-page">
+    <section id="com-setup" class="com-box" hidden>
+      <h2>ตั้งค่าเซิร์ฟเวอร์คอมมูนิตี้</h2>
+      <p class="hint">ใส่ครั้งเดียว — เอามาจาก Supabase → Project Settings → API (ดูขั้นตอนใน <b>docs/community-setup.md</b>)
+        · เพื่อนที่ได้โปรแกรมจากเราไปไม่ต้องใส่เอง</p>
+      <label>Project URL <input id="com-url" type="url" placeholder="https://xxxx.supabase.co"></label>
+      <label>anon public key <input id="com-key" type="text" placeholder="eyJhbGciOi..."></label>
+      <button id="com-save" class="primary" type="button">บันทึก</button>
+    </section>
+    <section id="com-login" class="com-box" hidden>
+      <h2>ล็อกอินเพื่อดูและแชร์ไลน์อัพกับเพื่อน</h2>
+      <p class="hint">ใช้บัญชี Discord · โปรแกรมเห็นแค่ชื่อที่โชว์ ไม่เห็นรหัสผ่าน</p>
+      <button id="com-login-btn" class="primary" type="button">ล็อกอินด้วย Discord</button>
+    </section>
+    <section id="com-main" hidden>
+      <nav class="filters">
+        <label>ตัวละคร <select id="c-agent"></select></label>
+        <label>แมพ <select id="c-map"></select></label>
+        <label><input id="c-hide-have" type="checkbox"> ซ่อนที่มีแล้ว</label>
+        <button id="c-reload" class="chip" type="button">↻ โหลดใหม่</button>
+        <span class="spacer"></span>
+        <span id="c-count" class="count"></span>
+        <span id="c-user" class="hint"></span>
+        <button id="c-logout" class="chip" type="button">ออกจากระบบ</button>
+      </nav>
+      <p class="hint com-help">✓ = กดว่าใช้ได้จริง · ✗ = ใช้ไม่ได้ · ในเกมกด <b>F7</b> (ใช้ได้จริง) / <b>F8</b> (แจ้งผิด)
+        กับใบที่เอามาจากที่นี่ได้เลย แล้วคะแนนจะส่งตอนเปิดหน้านี้ · แชร์ของเราได้จากแท็บคลัง (ปุ่ม ⇪)</p>
+      <div id="c-grid" class="grid com-grid"></div>
+      <p id="c-empty" class="empty" hidden>ยังไม่มีไลน์อัพในคอมมูนิตี้ตามตัวกรองนี้</p>
+    </section>
+  </div>
+</div><!-- /tab-community -->
+
 <!-- แท็บตั้งค่า (settings.js) — ค่าเก็บใน settings.json ทับ config.yaml -->
 <div id="tab-settings" hidden>
   <div class="set-page">
@@ -320,6 +503,33 @@
       ส่วน <b>เปิดโปรแกรมใหม่</b> ต้องปิดแล้วเปิดโปรแกรมหลักอีกรอบ · ↺ = กลับไปใช้ค่าเริ่มต้น</p>
     <p id="settings-live" class="set-live idle"></p>
     <div id="settings-form"></div>
+    <!-- ไฟล์เสียงพูด (settings.js · lineupmaster/voice.py) -->
+    <section class="set-group">
+      <h3>ไฟล์เสียงพูด</h3>
+      <div class="set-row shrink-row">
+        <span class="set-label"><span><b>สร้างเสียงล่วงหน้า</b>
+          <small id="voice-info">กำลังนับ…</small></span></span>
+        <progress id="voice-bar" max="1" value="0" hidden></progress>
+        <span class="shrink-actions">
+          <button id="voice-sample" class="chip" type="button">▶ ทดลองฟัง</button>
+          <button id="voice-stop" class="chip danger" type="button" hidden>หยุด</button>
+          <button id="voice-go" class="chip primary" type="button" disabled>สร้างเสียง</button>
+        </span>
+      </div>
+    </section>
+    <!-- ย่อขนาดรูปทั้งคลัง (settings.js · lineupmaster/shrink.py) -->
+    <section class="set-group">
+      <h3>พื้นที่เก็บรูป</h3>
+      <div class="set-row shrink-row">
+        <span class="set-label"><span><b>ย่อขนาดรูปทั้งคลัง</b>
+          <small id="shrink-info">กำลังนับรูป…</small></span></span>
+        <progress id="shrink-bar" max="1" value="0" hidden></progress>
+        <span class="shrink-actions">
+          <button id="shrink-stop" class="chip danger" type="button" hidden>หยุด</button>
+          <button id="shrink-go" class="chip primary" type="button" disabled>ย่อขนาด</button>
+        </span>
+      </div>
+    </section>
   </div>
 </div><!-- /tab-settings -->
 
@@ -329,13 +539,17 @@
   <label>ตั้งสกิล <select id="bulk-ability"></select></label>
   <button id="bulk-fav" type="button">★ ติดไม้ตาย</button>
   <button id="bulk-unfav" type="button">เอาไม้ตายออก</button>
+  <button id="bulk-share" type="button">⇪ แชร์ขึ้นคอมมูนิตี้</button>
   <button id="bulk-clear" type="button">ยกเลิกการเลือก</button>
 </div>
 
 <!-- กล่องเพิ่มรูป -->
 <dialog id="add-dialog">
   <form method="dialog" id="add-form">
-    <h2>เพิ่มรูปเข้าคลัง</h2>
+    <h2>เพิ่มรูปเข้าคลัง <span id="add-step" class="add-count"></span></h2>
+    <div class="pin-steps add-steps" data-step="2">
+      <span class="done"><b>1</b>เลือกรูป</span><i></i><span class="now"><b>2</b>ตั้งค่า</span><i></i><span><b>3</b>ปักหมุด</span>
+    </div>
     <p id="add-info" class="hint"></p>
     <img id="add-preview" alt="">
     <label class="wide">ชื่อ <input id="a-name" type="text" required></label>
@@ -348,7 +562,7 @@
     <p id="a-dest" class="dest"></p>
     <menu>
       <button value="cancel" type="submit">ยกเลิก</button>
-      <button value="ok" type="submit" class="primary">เพิ่ม</button>
+      <button value="ok" type="submit" class="primary">เพิ่ม แล้วไปปักหมุด</button>
     </menu>
   </form>
 </dialog>
@@ -450,15 +664,72 @@
   </section>
 </dialog>
 
-<p id="toast" class="toast" hidden></p>
-<p class="dropzone-hint">ลากไฟล์รูปมาวางในหน้านี้ หรือกด Ctrl+V วางจากคลิปบอร์ดได้เลย</p>
+<dialog id="draw-dialog" class="draw">
+  <div class="draw-bar">
+    <strong id="draw-title" class="draw-title"></strong>
+    <span class="group">
+      <button type="button" class="icon" data-tool="pen" title="ปากกาเส้นอิสระ">✎</button>
+      <button type="button" class="icon" data-tool="arrow" title="ลูกศร (ลากจากต้นไปปลาย)">➚</button>
+      <button type="button" class="icon" data-tool="circle" title="วงกลม (ลากเป็นกรอบ)">◯</button>
+      <button type="button" class="icon" data-tool="rect" title="กรอบสี่เหลี่ยม">▭</button>
+      <button type="button" class="icon" data-tool="text" title="ตัวหนังสือ (คลิกตรงที่จะเขียน)">T</button>
+    </span>
+    <span class="group" id="draw-colors"></span>
+    <span class="group">
+      <button type="button" class="icon" data-width="0" title="เส้นบาง">▁</button>
+      <button type="button" class="icon" data-width="1" title="เส้นกลาง">▃</button>
+      <button type="button" class="icon" data-width="2" title="เส้นหนา">▅</button>
+    </span>
+    <span class="group">
+      <button type="button" class="icon" id="draw-undo" title="ย้อน (Ctrl+Z)">↶</button>
+      <button type="button" class="chip" id="draw-clear">ล้าง</button>
+    </span>
+    <span class="spacer"></span>
+    <button type="button" id="draw-cancel">ยกเลิก</button>
+    <button type="button" id="draw-save" class="primary">บันทึกลงรูป</button>
+  </div>
+  <div class="draw-stage"><canvas id="draw-canvas"></canvas></div>
+</dialog>
 
+<!-- รายละเอียดใบคอมมูนิตี้ (M9) — community.js openComDetail -->
+<dialog id="com-detail" class="com-detail">
+  <div class="cd-head">
+    <div><h2 id="cd-title"></h2><p id="cd-meta" class="hint"></p></div>
+    <button type="button" class="icon" id="cd-close" aria-label="ปิด">✕</button>
+  </div>
+  <div class="cd-body">
+    <div class="cd-img"><img id="cd-img" alt=""></div>
+    <div class="cd-side">
+      <div class="mapstage cd-map" id="cd-map"></div>
+      <p class="hint"><b class="stand-dot">●</b> จุดยืน · <b class="target-dot">●</b> จุดที่ลูกไปตก</p>
+      <p id="cd-note" class="cd-note"></p>
+      <div class="cd-score"><span id="cd-score"></span><span id="cd-owner" class="hint"></span></div>
+      <div class="cd-actions">
+        <button type="button" id="cd-up" class="chip">✓ ใช้ได้จริง</button>
+        <button type="button" id="cd-down" class="chip">✗ ใช้ไม่ได้</button>
+        <span class="spacer"></span>
+        <button type="button" id="cd-take" class="primary">เอาเข้าคลัง</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<p id="toast" class="toast" hidden></p>
+<p class="dropzone-hint">กด Ctrl+V เพื่อวางรูปจากคลิปบอร์ดเข้าคลังได้เลย</p>
+
+<script src="ui.js"></script>
 <script src="scope.js"></script>
 <script src="mapview.js"></script>
+<script src="draw.js"></script>
 <script src="app.js"></script>
 <script src="source.js"></script>
+<script src="clip.js"></script>
+<script src="video.js"></script>
+<script src="coverage.js"></script>
 <script src="merge.js"></script>
 <script src="settings.js"></script>
 <script src="curate.js"></script>
+<script src="community.js"></script>
+<script src="shell.js"></script>
 </body>
 </html>

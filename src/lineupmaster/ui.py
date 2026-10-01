@@ -28,6 +28,7 @@ from PySide6.QtGui import (
     QPainter,
     QPen,
     QPixmap,
+    QTransform,
 )
 from PySide6.QtWidgets import QLabel, QMainWindow, QStackedWidget, QWidget
 
@@ -39,8 +40,11 @@ _CACHE_LIMIT = 64
 
 PIN_COLOR = "#cfd8e3"        # หมุดที่ไม่มีสีประจำตัว (หมุดลำดับที่ 9 ขึ้นไปในหน้าเดียวกัน)
 PIN_ON = "#ffd479"           # หมุดที่เลือก + เส้นไปเป้า (สีเดียวกับข้อความเตือนของแอป)
+STAND_ON = "#4ade80"         # จุดยืนของใบที่เปิดอยู่บนมินิแมพ F10 (เขียว = ยืน เหมือนหน้าเว็บ)
 SITE_LABEL_COLOR = "#7dd3fc" # ตัวอักษร A/B/C บนแผนที่ (ฟ้า — ไม่ซ้ำกับสีหมุดหรือเส้น)
 CALLOUT_COLOR = "#7a8496"    # เทาจาง = ชื่อโซนอ้างอิงจากเกม (ดูเฉยๆ ไม่ใช่หมุดไลน์อัพ)
+ZONE_RING_COLOR = "#ff5f56"  # วง "ตอนนี้อยู่แถวนี้" ของโหมดตามตัว — แดงเพราะต้องไม่ถูกเข้าใจ
+                             # ผิดว่าเป็นหมุดหรือเส้นไปเป้า (ซึ่งกินสีที่เหลือไปหมดแล้ว)
 
 # หมุด 1-8 มีสีประจำตัว (ตัวเลข + เส้นไปเป้า สีเดียวกัน) จะได้ไล่ตามเส้นเจอโดยไม่ต้องกดเลือกก่อน
 # เป็นชุดสีจัดหมวด (categorical) ที่ผ่านการตรวจแล้วว่าแยกออกจากกันชัด แม้สำหรับคนตาบอดสี —
@@ -80,16 +84,25 @@ def gif_duration_ms(path: Path) -> int:
     return total
 
 
+FLAG = "⚑"            # ใบที่แจ้งผิดไว้ (F8) — รอไปแก้ในหน้าเว็บ
+FLAG_RED = "#ff5a5a"
+
+
 def _label_for(lu: Lineup) -> str:
     """ชื่อที่โชว์ทับมุมล่างของรูป.
 
     มีโน้ต (.txt คู่ชื่อไฟล์ — ดู index.py::_read_note) ใช้โน้ตเลย เพราะพอสูตรจากจุดยืน
     เดียวกันเยอะขึ้น รูปจะหน้าตาคล้ายกันมาก อ่านโน้ตสั้นๆ ไวกว่าแกะชื่อไฟล์ยาวๆ — ไม่มีโน้ต
     ก็กลับไปใช้ชื่อไฟล์แบบเดิม (อ่านง่ายกว่า tag ที่แยกได้)
+
+    ใบที่กด F8 แจ้งผิดไว้ขึ้นต้นด้วย ``FLAG`` — ImageWall เห็นแล้ววาดแถบชื่อเป็นสีแดง
     """
-    if lu.note:
-        return lu.note.strip()
-    return lu.stem.replace("_", " ").replace("-", " ")
+    text = lu.note.strip() if lu.note else lu.stem.replace("_", " ").replace("-", " ")
+    if lu.cid:                             # ใบจากคอมมูนิตี้ — คะแนนของทุกคน (+ เสียงของเรา)
+        works, broken = lu.score or (0, 0)
+        mine = " (เรา ✓)" if lu.vote == 1 else " (เรา ✗)" if lu.vote == -1 else ""
+        text = f"{text}   ✓{works} ✗{broken}{mine}"
+    return f"{FLAG} {text}" if lu.flag else text
 
 
 class ImageWall(QWidget):
@@ -105,6 +118,7 @@ class ImageWall(QWidget):
         self._show_labels = True
         self._equal_size = True
         self._cursor = -1        # -1 = ไม่ไฮไลต์อะไร
+        self._numbered = False   # โหมดหมุด: กดเลขกำกับรูปเพื่อซูมตรงเข้ารูปนั้นได้เลย
 
         # ตัวเล่น gif ทับเต็มพื้นที่ ใช้เฉพาะตอนซูมแล้วกดดู — ปกติซ่อนไว้
         self._movie: QMovie | None = None
@@ -129,6 +143,10 @@ class ImageWall(QWidget):
 
     def set_cursor(self, index: int) -> None:
         self._cursor = index
+        self.update()
+
+    def set_numbered(self, numbered: bool) -> None:
+        self._numbered = numbered
         self.update()
 
     def set_gif(self, path: Path | None) -> None:
@@ -385,8 +403,23 @@ class ImageWall(QWidget):
             painter.drawPixmap(ix, iy, pix)
             frame = QRect(ix, iy, pix.width(), pix.height())
 
-            if self._show_labels and i < len(self._labels) and self._labels[i]:
-                self._draw_label(painter, font, self._labels[i], frame)
+            label = self._labels[i] if i < len(self._labels) else ""
+            flagged = label.startswith(FLAG)
+            # ใบที่แจ้งผิดโชว์ชื่อเสมอ (แม้ปิดชื่อไว้) — ธงแดงคือสิ่งที่ต้องเห็นว่าอย่าเชื่อใบนี้
+            if label and (self._show_labels or flagged):
+                self._draw_label(painter, font, label, frame, flagged)
+            if flagged:
+                pen = QPen(QColor(FLAG_RED))
+                pen.setWidth(3)
+                pen.setStyle(Qt.PenStyle.DashLine)
+                painter.setPen(pen)
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawRect(frame.adjusted(8, 8, -8, -8))
+
+            # เลขกำกับมุมซ้ายบน — เห็นเฉพาะตอนอยู่ในกริดของหมุดที่เลือกแล้ว (ดู pick_lineup)
+            # กับตอนมีมากกว่า 1 รูปเท่านั้น (รูปเดียวไม่มีอะไรให้เลือก)
+            if self._numbered and len(self._paths) > 1:
+                self._draw_number(painter, font, i + 1, frame)
 
             # กรอบบอกว่าตอนนี้ปุ่มซูมจะซูมรูปไหน (มีความหมายเฉพาะตอนโชว์หลายรูป)
             if i == self._cursor and len(self._paths) > 1:
@@ -396,8 +429,31 @@ class ImageWall(QWidget):
                 painter.setBrush(Qt.BrushStyle.NoBrush)
                 painter.drawRect(frame.adjusted(2, 2, -2, -2))
 
-    def _draw_label(self, painter: QPainter, font: QFont, text: str, img_rect: QRect) -> None:
-        """แถบชื่อโปร่งแสงทับมุมล่างซ้ายของรูป ขนาดตัวอักษรปรับตามรูป."""
+    def _draw_number(self, painter: QPainter, font: QFont, number: int, img_rect: QRect) -> None:
+        """วงกลมเลข 1-9 มุมซ้ายบนของรูป — กดเลขนี้บน numpad เพื่อซูมตรงเข้ารูปนี้ (pick_lineup).
+
+        สีเดียวกับหมุดที่เลือกอยู่บนแผนที่ (PIN_ON) ให้รู้สึกต่อเนื่องว่ามาจากหมุดเดียวกัน
+        """
+        size = max(24, min(40, img_rect.height() // 8))
+        margin = 6
+        chip = QRect(img_rect.x() + margin, img_rect.y() + margin, size, size)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(11, 14, 20, 210))
+        painter.drawEllipse(chip)
+        pen = QPen(QColor(PIN_ON))
+        pen.setWidth(2)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(chip)
+        font.setPointSize(round(size * 0.5))
+        font.setBold(True)
+        painter.setFont(font)
+        painter.setPen(QColor(PIN_ON))
+        painter.drawText(chip, Qt.AlignmentFlag.AlignCenter, str(number))
+
+    def _draw_label(self, painter: QPainter, font: QFont, text: str, img_rect: QRect,
+                    flagged: bool = False) -> None:
+        """แถบชื่อโปร่งแสงทับมุมล่างซ้ายของรูป ขนาดตัวอักษรปรับตามรูป (แจ้งผิดไว้ = แถบแดง)."""
         size = max(11, min(18, img_rect.height() // 18))
         font.setPointSize(size)
         font.setBold(True)
@@ -409,8 +465,8 @@ class ImageWall(QWidget):
         bar_h = metrics.height() + pad_y * 2
         bar = QRect(img_rect.x(), img_rect.bottom() - bar_h + 1, img_rect.width(), bar_h)
 
-        painter.fillRect(bar, QColor(0, 0, 0, 165))
-        painter.setPen(QColor("#f2f4f8"))
+        painter.fillRect(bar, QColor(120, 0, 0, 200) if flagged else QColor(0, 0, 0, 165))
+        painter.setPen(QColor("#ffd0d0" if flagged else "#f2f4f8"))
         painter.drawText(
             bar.adjusted(pad_x, 0, -pad_x, 0),
             Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
@@ -434,15 +490,32 @@ class MapView(QWidget):
         self._selected: int | None = None   # ลำดับในหน้า (0-based)
         self._labels: dict[str, tuple[tuple[float, float], bool]] = {}  # {"a": ((x,y), ตั้งเองไหม)}
         self._callouts: list[tuple[str, tuple[float, float]]] = []  # [(ชื่อโซน, จุด)] อ้างอิงเฉยๆ
+        self._zone: tuple[str, tuple[float, float], float] | None = None  # วงของโหมดตามตัว
+        self._others: list = []   # หมุดที่อยู่นอกหน้าปัจจุบัน — วาดจางๆ ไม่มีเลข
+        self._targets: list = []  # เลขปลายทางของหมุดที่เลือก (Browser.target_marks)
+        self._panel: dict | None = None   # รูปตัวละคร + ไอคอนสกิลที่กรองอยู่ (icons.panel)
+        self._icon_cache: dict[str, QPixmap] = {}
+        self._empty_note = ""     # ไม่มีหมุดให้กด เพราะอะไร (ดู Browser.map_empty_note)
+        # หมุนแผนที่ทีละ 90° ให้จุดเกิดฝั่งเราอยู่ล่าง (callouts.facing_turn) — หมุนแค่ภาพ พิกัดหมุด
+        # ทุกตัวยังเป็นพิกัดรูปต้นฉบับ แปลงตอนวาดใน _at() ที่เดียว
+        self._turn = 0
+        self._source: QPixmap | None = None   # รูปแผนที่ต้นฉบับ (ยังไม่หมุน)
 
     def show_map(
         self, name: str | None, pins: list, selected: int | None,
         labels: dict[str, tuple[tuple[float, float], bool]] | None = None,
         callouts: list[tuple[str, tuple[float, float]]] | None = None,
+        zone: tuple[str, tuple[float, float], float] | None = None,
+        others: list | None = None,
+        empty_note: str = "",
+        targets: list[dict] | None = None,
+        panel: dict | None = None,
+        turn: int = 0,
     ) -> None:
+        turn = turn % 360 if turn % 90 == 0 else 0
         if name != self._name:
             self._name = name
-            self._map = None
+            self._source = None
             self._message = ""
             if name is not None:
                 path = ASSETS / "maps" / f"{name}.png"
@@ -452,11 +525,22 @@ class MapView(QWidget):
                     )
                 else:
                     pix = QPixmap(str(path))
-                    self._map = None if pix.isNull() else pix
+                    self._source = None if pix.isNull() else pix
+            self._turn = -1               # บังคับหมุนรูปใหม่ด้านล่าง
+        if turn != self._turn:
+            self._turn = turn
+            self._map = self._source
+            if self._source is not None and turn:
+                self._map = self._source.transformed(QTransform().rotate(turn))
         self._pins = pins
         self._selected = selected
         self._labels = labels or {}
         self._callouts = callouts or []
+        self._zone = zone
+        self._others = others or []
+        self._empty_note = empty_note
+        self._targets = targets or []   # เลขปลายทางของหมุดที่เลือก (Browser.target_marks)
+        self._panel = panel
         self.update()
 
     def _map_rect(self) -> QRect | None:
@@ -474,9 +558,21 @@ class MapView(QWidget):
             pix.height(),
         )
 
+    def _turned(self, point) -> tuple[float, float]:
+        """พิกัดบนรูปต้นฉบับ (0..1) → พิกัดบนรูปที่หมุนแล้ว (หมุนตามเข็มทีละ 90°)."""
+        x, y = point[0], point[1]
+        if self._turn == 90:
+            return 1 - y, x
+        if self._turn == 180:
+            return 1 - x, 1 - y
+        if self._turn == 270:
+            return y, 1 - x
+        return x, y
+
     def _at(self, rect: QRect, point) -> QPoint:
-        return QPoint(round(rect.x() + point[0] * rect.width()),
-                      round(rect.y() + point[1] * rect.height()))
+        x, y = self._turned(point)
+        return QPoint(round(rect.x() + x * rect.width()),
+                      round(rect.y() + y * rect.height()))
 
     def _draw_callouts(self, painter: QPainter, rect: QRect) -> None:
         """ป้ายอ้างอิงชื่อโซนที่เกมโชว์เอง (วางตำแหน่งไว้ผ่าน tools/place_callouts.py).
@@ -499,6 +595,151 @@ class MapView(QWidget):
             painter.drawEllipse(at, 3, 3)
             painter.setPen(text)
             painter.drawText(at.x() + 7, at.y() + 4, label)
+
+    def _draw_zone_ring(self, painter: QPainter, rect: QRect) -> None:
+        """วง "ตอนนี้อยู่แถวนี้" ของโหมดตามตัว — **วงเฉยๆ ไม่ได้เลือกหมุดให้**.
+
+        ตั้งใจให้เป็นเส้นประบางๆ ไม่ทึบ ไม่มีพื้น เพราะหน้าที่ของมันคือ "ชี้แถว" แล้วปล่อยให้
+        ผู้ใช้อ่านเลขหมุดข้างในเอง ถ้าวาดหนา/ทึบกว่านี้มันจะกลายเป็นตัวเอกแทนหมุด ซึ่งกลับหัว
+        กลับหางกับเหตุผลที่มีวงนี้ (ดู Browser.follow_zone)
+        """
+        if self._zone is None:
+            return
+        label, xy, radius = self._zone
+        at = self._at(rect, xy)
+        pen = QPen(QColor(ZONE_RING_COLOR))
+        pen.setWidthF(2.2)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        # รัศมีเป็นสัดส่วนของรูปต้นฉบับ — หมุน 90/270 แล้วกว้าง/สูงสลับกัน
+        side_w, side_h = ((rect.height(), rect.width()) if self._turn in (90, 270)
+                          else (rect.width(), rect.height()))
+        rx = round(radius * side_w)
+        ry = round(radius * side_h)
+        painter.drawEllipse(at, rx, ry)
+
+        font = painter.font()
+        font.setPointSize(max(9, round(min(rect.width(), rect.height()) * 0.018)))
+        font.setBold(True)
+        painter.setFont(font)
+        painter.setPen(QColor(ZONE_RING_COLOR))
+        painter.drawText(
+            QRect(at.x() - rx, at.y() - ry - font.pointSize() * 3, rx * 2, font.pointSize() * 3),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom,
+            label,
+        )
+
+    def _draw_targets(self, painter: QPainter, rect: QRect, radius: int) -> None:
+        """จุดปลายทางของหมุดที่เลือก — วงกลมเหลืองทึบมีเลขอยู่ข้างใน.
+
+        กลับสีกับหมุด (หมุด = พื้นเข้มเลขสว่าง / ปลายทาง = พื้นเหลืองเลขเข้ม) เพื่อให้แยกออก
+        ทันทีว่าเลขไหนคือ "จุดที่เรายืน" เลขไหนคือ "จุดที่ลูกจะไปลง" ทั้งที่ใช้เลข 1-9 เหมือนกัน
+        """
+        size = max(11, round(radius * 0.74))
+        font = painter.font()
+        font.setPointSize(max(8, round(size * 0.95)))
+        font.setBold(True)
+        badge = QFont(font)
+        badge.setPointSize(max(7, round(size * 0.62)))
+        for mark in self._targets:
+            if mark["xy"] is None:
+                continue                  # กลุ่มที่ยังไม่จิ้มจุดปลาย ไม่มีจุดให้วาด (เลขยังถูกกินไว้)
+            at = self._at(rect, mark["xy"])
+            painter.setPen(QPen(QColor("#11161f"), 2))
+            painter.setBrush(QColor(PIN_ON))
+            painter.drawEllipse(at, size, size)
+            painter.setFont(font)
+            painter.setPen(QColor("#11161f"))
+            painter.drawText(
+                QRect(at.x() - size, at.y() - size, size * 2, size * 2),
+                Qt.AlignmentFlag.AlignCenter,
+                str(mark["number"]),
+            )
+            if mark.get("flag"):          # ในกลุ่มมีใบที่แจ้งผิดไว้ — อย่าเพิ่งเชื่อจุดนี้
+                painter.setFont(badge)
+                painter.setPen(QColor(FLAG_RED))
+                painter.drawText(
+                    QRect(at.x() - size * 3 + 2, at.y() - size - 2, size * 2, size),
+                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                    FLAG,
+                )
+            if mark["count"] > 1:         # หลายใบตกจุดนี้ — กดแล้ว 4/6 ดูทีละใบ
+                painter.setFont(badge)
+                painter.setPen(QColor(PIN_ON))
+                painter.drawText(
+                    QRect(at.x() + size - 2, at.y() - size - 2, size * 3, size),
+                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                    f"×{mark['count']}",
+                )
+
+    def _pixmap(self, path) -> QPixmap | None:
+        key = str(path)
+        if key not in self._icon_cache:
+            pix = QPixmap(key)
+            self._icon_cache[key] = pix
+        pix = self._icon_cache[key]
+        return None if pix.isNull() else pix
+
+    def _draw_panel(self, painter: QPainter, rect: QRect) -> None:
+        """รูปตัวละคร + ไอคอนสกิลที่ปุ่ม Home วนถึง ในพื้นที่ดำ**ด้านซ้ายนอกแผนที่** (ไม่บังแผนที่).
+
+        สกิลที่กรองอยู่ใหญ่ สว่าง มีกรอบเหลือง + ชื่อไทย · ตัวอื่นเล็กจาง เรียงตามลำดับการวน จะได้เห็นว่า
+        กด Home อีกทีไปตัวไหน · ไม่ได้กรองสกิล ("ทั้งหมด") = ทุกไอคอนสว่างเท่ากัน
+        จอแคบจนไม่มีขอบซ้าย = ย่อแผงลงมาวางมุมซ้ายบน (ทับแผนที่นิดหน่อย ดีกว่าไม่เห็นเลย)
+        """
+        panel = self._panel
+        if not panel:
+            return
+        margin = rect.left()
+        width = max(84, min(260, margin - 40))
+        left = max(12, (margin - width) // 2)
+        y = 64
+        # ใหญ่ตามพื้นที่ว่างด้านซ้าย (จอกว้างมีที่เหลือเยอะ) — ต้องเห็นได้ด้วยหางตาระหว่างเล่น
+        big = max(52, min(140, width - 30))
+        small = max(34, big // 2)
+
+        portrait = self._pixmap(panel["portrait"]) if panel["portrait"] else None
+        if portrait is not None:
+            size = round(big * 0.85)
+            painter.drawPixmap(QRect(left + (width - size) // 2, y, size, size), portrait)
+            y += size + 6
+        font = painter.font()
+        font.setPointSize(max(11, big // 7))
+        font.setBold(True)
+        painter.setFont(font)
+        if panel["all"]:
+            painter.setPen(QColor("#9aa3b2"))
+            painter.drawText(QRect(left, y, width, big // 4), Qt.AlignmentFlag.AlignHCenter, "ทุกสกิล")
+            y += big // 4 + 8
+        else:
+            y += 6
+
+        for item in panel["items"]:
+            on = item["active"]
+            size = big if on else small
+            pix = self._pixmap(item["icon"]) if item["icon"] else None
+            box = QRect(left + (width - size) // 2, y, size, size)
+            if on:
+                painter.setPen(QPen(QColor(PIN_ON), 3))
+                painter.setBrush(QColor(255, 212, 121, 40))
+                painter.drawRoundedRect(box.adjusted(-8, -8, 8, 8), 8, 8)
+            painter.setOpacity(1.0 if on or panel["all"] else 0.35)
+            if pix is not None:
+                painter.drawPixmap(box, pix)
+            else:
+                painter.setPen(QColor("#c9d1dc"))
+                painter.drawText(box, Qt.AlignmentFlag.AlignCenter, item["th"])
+            if on or panel["all"]:
+                painter.setPen(QColor(PIN_ON) if on else QColor("#c9d1dc"))
+                font.setPointSize(max(13, big // 6) if on else max(10, big // 10))
+                painter.setFont(font)
+                height = big // 4 + 6
+                painter.drawText(QRect(left - 10, y + size + 10, width + 20, height),
+                                 Qt.AlignmentFlag.AlignHCenter, item["th"])
+                y += height + 6
+            painter.setOpacity(1.0)
+            y += size + 18
 
     def _draw_site_labels(self, painter: QPainter, rect: QRect) -> None:
         """วาดตัวอักษร A/B/C กำกับจุดยิง — รูปแผนที่ดิบไม่มีตัวอักษรนี้มาให้เอง.
@@ -558,8 +799,10 @@ class MapView(QWidget):
             ),
         )
 
+        self._draw_panel(painter, rect)
         self._draw_callouts(painter, rect)
         self._draw_site_labels(painter, rect)
+        self._draw_zone_ring(painter, rect)
 
         if not self._pins:
             painter.setPen(QColor("#3a4050"))
@@ -568,11 +811,23 @@ class MapView(QWidget):
             painter.drawText(
                 self.rect(),
                 Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom,
-                "ยังไม่ได้จิ้มหมุดของแมพ/ฝั่งนี้  —  รัน python tools/pin_lineups.py\n",
+                (self._empty_note or "ยังไม่ได้จิ้มหมุดของแมพ/ฝั่งนี้") + "\n",
             )
             return
 
         radius = max(15, round(min(rect.width(), rect.height()) * 0.023))
+
+        # หมุดนอกหน้านี้: จุดจางๆ ไม่มีเลข — เห็นภาพรวมว่าแมพนี้มีอะไรอีกบ้าง แต่ไม่แย่งสายตา
+        # จากเลข 1-9 ที่กดได้จริง (ตอนรู้ว่ายืนอยู่ไหน พวกนี้คือหมุดที่ไกลตัวออกไป) · วาดก่อน
+        # ทุกอย่างของหมุด จะได้อยู่ล่างสุด ไม่บังหมุดที่มีเลข
+        if self._others:
+            faded = QColor(PIN_COLOR)
+            faded.setAlpha(70)
+            painter.setPen(QPen(faded, 1.5))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            small = max(5, round(radius * 0.38))
+            for pin in self._others:
+                painter.drawEllipse(self._at(rect, pin.xy), small, small)
 
         # เส้นจางของ "ทุก" หมุด — ให้เห็นได้ว่าแต่ละจุดยิงไปทางไหนโดยไม่ต้องกดเลือกก่อน แต่ละเส้น
         # ใช้สีเดียวกับตัวเลขของหมุดต้นทาง (ดู PIN_PALETTE) จะได้ไล่ตามเส้นไปหาหมุดที่ใช่ได้ทันที
@@ -586,23 +841,28 @@ class MapView(QWidget):
             painter.setPen(faint_pen)
             start = self._at(rect, pin.xy)
             for target in pin.targets:
-                painter.drawLine(start, self._at(rect, target))
+                if target is not None:
+                    painter.drawLine(start, self._at(rect, target))
 
         # เส้นไปเป้าวาดก่อน จะได้อยู่ใต้หมุด ไม่บังตัวเลข
-        if self._selected is not None and self._selected < len(self._pins):
-            chosen = self._pins[self._selected]
-            start = self._at(rect, chosen.xy)
+        picked = self._selected is not None and self._selected < len(self._pins)
+        if picked:
+            start = self._at(rect, self._pins[self._selected].xy)
             painter.setPen(QPen(QColor(PIN_ON), 3))
-            for target in chosen.targets:
-                painter.drawLine(start, self._at(rect, target))
-            painter.setBrush(QColor(PIN_ON))
-            painter.setPen(Qt.PenStyle.NoPen)
-            for target in chosen.targets:
-                at = self._at(rect, target)
-                painter.drawEllipse(at, radius // 2, radius // 2)
+            for mark in self._targets:
+                if mark["xy"] is not None:
+                    painter.drawLine(start, self._at(rect, mark["xy"]))
 
         for i, pin in enumerate(self._pins):
             on = i == self._selected
+            if picked and not on:
+                # เลือกหมุดแล้ว หมุดอื่นแค่จุดจางๆ — เลขปลายทางคือสิ่งที่ต้องอ่านตอนนี้ ห้ามโดนบัง
+                faded = QColor(_pin_hue(i))
+                faded.setAlpha(90)
+                painter.setPen(QPen(faded, 1.5))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawEllipse(self._at(rect, pin.xy), radius // 2, radius // 2)
+                continue
             hue = QColor(_pin_hue(i))
             at = self._at(rect, pin.xy)
             body = QColor(PIN_ON) if on else QColor("#11161f")
@@ -630,6 +890,125 @@ class MapView(QWidget):
                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                     f"×{len(pin.lineups)}",
                 )
+
+        # เลขปลายทางวาดท้ายสุด = อยู่บนสุดเสมอ (เดิมวาดก่อนหมุด หมุดอื่นเลยทับเลขจนอ่านไม่ออก)
+        # เลขคือ "จุดตกที่เท่าไหร่ในหน้านี้" ใบที่ตกจุดเดียวกันรวมเป็นเลขเดียว (ดู Browser.target_groups)
+        if picked:
+            self._draw_targets(painter, rect, radius)
+
+
+class InsetMap(MapView):
+    """มินิแมพมุมจอของโหมดซูมตามตัว (F10) — ใบที่เปิดอยู่สว่าง ใบอื่นในโซนเป็นเลขจางตรงจุดตก.
+
+    ใช้รูปแผนที่/การหมุน/ป้ายไซต์/วงโซนของ MapView เดิมทั้งหมด ต่างแค่วิธีวาดหมุด: ที่นี่ไม่มี
+    "หมุดที่เลือก" — เลขคือ "ใบที่เท่าไหร่ของโซนนี้" กดเลขนั้นแล้วรูปเปลี่ยนเป็นใบนั้น (app._on_press)
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._marks: list[dict] = []
+        self._spots: list = []
+
+    def show_auto(self, data: dict, turn: int) -> None:
+        self._marks = data.get("marks") or []
+        self._spots = data.get("others") or []
+        self.show_map(data["map"], [], None, data.get("labels"), None, data.get("zone"), None, "",
+                      None, None, turn)
+
+    def paintEvent(self, _event) -> None:  # noqa: N802 - Qt API
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor("#000000"))
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        rect = self._map_rect()
+        if rect is None:
+            return
+        painter.setOpacity(0.85)
+        painter.drawPixmap(rect, self._map.scaled(rect.width(), rect.height(),
+                                                  Qt.AspectRatioMode.IgnoreAspectRatio,
+                                                  Qt.TransformationMode.SmoothTransformation))
+        painter.setOpacity(1.0)
+        self._draw_site_labels(painter, rect)
+        self._draw_zone_ring(painter, rect)
+        radius = max(8, round(min(rect.width(), rect.height()) * 0.032))
+
+        # จุดยืนอื่นทั่วแมพ — จุดจางไม่มีเลข (เดินไปถึงโซนนั้นแล้ว F10 เปลี่ยนรูปให้เอง)
+        faded = QColor(PIN_COLOR)
+        faded.setAlpha(80)
+        painter.setPen(QPen(faded, 1.5))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        for xy in self._spots:
+            painter.drawEllipse(self._at(rect, xy), radius // 2, radius // 2)
+
+        font = painter.font()
+        font.setBold(True)
+        font.setPointSize(max(8, round(radius * 0.95)))
+        painter.setFont(font)
+        # ใบอื่นก่อน (จาง) แล้วใบที่เปิดอยู่ทับข้างบนสุด
+        for mark in sorted(self._marks, key=lambda m: m["on"]):
+            if mark["from"] is None:
+                continue
+            on = mark["on"]
+            start = self._at(rect, mark["from"])
+            line = QColor(PIN_ON)
+            line.setAlpha(255 if on else 90)
+            painter.setPen(QPen(line, 3 if on else 1.5))
+            if mark["to"] is not None:
+                end = self._at(rect, mark["to"])
+                painter.drawLine(start, end)
+            else:
+                end = start
+            # จุดยืน
+            painter.setBrush(QColor(STAND_ON if on else "#11161f"))
+            painter.setPen(QPen(QColor(STAND_ON), 2 if on else 1))
+            painter.drawEllipse(start, radius // 2 if not on else radius * 2 // 3,
+                                radius // 2 if not on else radius * 2 // 3)
+            # เลขตรงจุดตก — เลขเดียวกับที่กดเลือก
+            if mark["to"] is None:
+                continue
+            fill = QColor(PIN_ON)
+            if not on:
+                fill = QColor("#11161f")
+                fill.setAlpha(170)
+            painter.setBrush(fill)
+            edge = QColor(PIN_ON)
+            edge.setAlpha(255 if on else 150)
+            painter.setPen(QPen(edge, 2))
+            painter.drawEllipse(end, radius, radius)
+            ink = QColor("#11161f") if on else QColor(PIN_ON)
+            if not on:
+                ink.setAlpha(190)
+            painter.setPen(ink)
+            painter.drawText(QRect(end.x() - radius, end.y() - radius, radius * 2, radius * 2),
+                             Qt.AlignmentFlag.AlignCenter, str(mark["number"]))
+            if mark.get("flag"):
+                painter.setPen(QColor(FLAG_RED))
+                painter.drawText(QRect(end.x() - radius * 3, end.y() - radius * 2, radius * 2, radius),
+                                 Qt.AlignmentFlag.AlignRight, FLAG)
+
+
+class PanelOverlay(MapView):
+    """แผงรูปตัวละคร + ไอคอนสกิลที่กรองอยู่ (แบบเดียวกับข้างแผนที่ F9) ลอยมุมซ้ายบนตอนใช้ F10.
+
+    ใช้ ``MapView._draw_panel`` ตัวเดิมทั้งหมด — หน้าตา/ลำดับ/การไฮไลต์สกิลตรงกับ F9 เป๊ะ
+    พื้นหลังโปร่งแสงวางทับขอบซ้ายของรูปไลน์อัพ (ผู้ใช้เลือกแบบนี้ 30/09/2026)
+    """
+
+    WIDTH = 150
+
+    def set_panel(self, panel: dict | None) -> None:
+        self._panel = panel
+        self.update()
+
+    def paintEvent(self, _event) -> None:  # noqa: N802 - Qt API
+        if not self._panel:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(8, 10, 14, 190))
+        painter.drawRoundedRect(self.rect().adjusted(0, 52, 0, 0), 8, 8)
+        # _draw_panel วางแผงกลางพื้นที่ "ซ้ายของแผนที่" = ให้แผนที่เริ่มที่ขอบขวาของวิดเจ็ตนี้
+        self._draw_panel(painter, QRect(self.width(), 0, 0, self.height()))
 
 
 class MainWindow(QMainWindow):
@@ -673,6 +1052,17 @@ class MainWindow(QMainWindow):
             " font-weight: 600; padding: 7px 22px; border-radius: 5px;"
         )
         self.header.hide()
+
+        # มินิแมพมุมขวาล่างของโหมดซูมตามตัว (F10) — จุดยืน/จุดตกของใบที่ซูมอยู่ + วงโซน
+        self.inset = InsetMap()
+        self.inset.setParent(self)
+        self.inset.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.inset.hide()
+        self._inset_big = False
+        self.panel = PanelOverlay()
+        self.panel.setParent(self)
+        self.panel.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.panel.hide()
 
         self.status = QLabel(self)
         self.status.hide()
@@ -722,16 +1112,29 @@ class MainWindow(QMainWindow):
         self, name: str | None, pins: list, selected: int | None,
         labels: dict[str, tuple[float, float]] | None = None,
         callouts: list[tuple[str, tuple[float, float]]] | None = None,
+        zone: tuple[str, tuple[float, float], float] | None = None,
+        others: list | None = None,
+        empty_note: str = "",
+        targets: list[dict] | None = None,
+        panel: dict | None = None,
+        turn: int = 0,
     ) -> None:
         """สลับไปชั้น 0 — หยุด gif ที่อาจค้างอยู่ก่อน ไม่งั้นมันเล่นอยู่หลังแผนที่เงียบๆ."""
         self.wall.set_gif(None)
-        self.map.show_map(name, pins, selected, labels, callouts)
+        self.map.show_map(name, pins, selected, labels, callouts, zone, others, empty_note, targets,
+                          panel, turn)
         self.stack.setCurrentWidget(self.map)
 
     def show_view(
-        self, items: list[Lineup], cursor: int, zoomed: bool, play_gif: bool = False
+        self, items: list[Lineup], cursor: int, zoomed: bool, play_gif: bool = False,
+        numbered: bool = False,
     ) -> None:
-        """โชว้รูปตามสถานะปัจจุบัน — ซูมคือโชว์เฉพาะรูปที่เคอร์เซอร์ชี้อยู่."""
+        """โชว้รูปตามสถานะปัจจุบัน — ซูมคือโชว์เฉพาะรูปที่เคอร์เซอร์ชี้อยู่.
+
+        ``numbered`` = กำลังอยู่ในกริดของหมุดที่เลือกแล้ว (ดู Browser.pin_xy) — วาดเลขกำกับ
+        แต่ละรูปให้กดตัวเลขซูมตรงเข้ารูปนั้นได้เลย (ImageWall เองเป็นคนตัดสินใจสุดท้ายว่าจะ
+        วาดจริงไหม เช่นตอนเหลือรูปเดียวก็ไม่มีอะไรให้กดเลือก)
+        """
         self.stack.setCurrentWidget(self.wall)
         gif: Path | None = None
         if zoomed and items:
@@ -740,9 +1143,44 @@ class MainWindow(QMainWindow):
             cursor = -1
             if play_gif:
                 gif = items[0].gif
+            elif items[0].animated:
+                gif = items[0].path     # ไลน์อัพที่เป็นภาพเคลื่อนไหวล้วน — ซูมแล้วเล่นเลย ไม่ต้องกด numpad *
+        self.wall.set_numbered(numbered)
         self.wall.set_images([(lu.path, _label_for(lu)) for lu in items])
         self.wall.set_cursor(cursor if len(items) > 1 else -1)
         self.wall.set_gif(gif)
+
+    def show_inset(self, data: dict | None, turn: int = 0, big: bool = False) -> None:
+        """มินิแมพมุมจอ (โหมด F10) — ``None`` = ซ่อน · ``big`` = โซนนี้ไม่มีรูป ให้แผนที่ใหญ่ขึ้นแทน."""
+        if data is None:
+            self.inset.hide()
+            return
+        self.inset.show_auto(data, turn)
+        self._inset_big = big
+        self._reposition_inset()
+        self.inset.show()
+        self.inset.raise_()
+
+    def show_panel(self, panel: dict | None) -> None:
+        """แผงตัวละคร/สกิลที่กรองอยู่ มุมซ้ายบน (โหมด F10) — ``None`` = ซ่อน (ไม่ได้กรองตัวละคร)."""
+        if not panel:
+            self.panel.hide()
+            return
+        # สูงพอสำหรับรูปตัวละคร + สกิลที่เลือก (ใหญ่) + ที่เหลือ (เล็ก) — คิดแบบเดียวกับ _draw_panel
+        big = max(52, min(140, PanelOverlay.WIDTH - 40 - 30))
+        height = 64 + round(big * 0.85) + 20 + (big + big // 4 + 30) + (len(panel["items"]) - 1) * (big // 2 + 24)
+        self.panel.setFixedSize(PanelOverlay.WIDTH, min(height + 20, max(200, self.height() - 20)))
+        self.panel.move(10, 0)
+        self.panel.set_panel(panel)
+        self.panel.show()
+        self.panel.raise_()
+
+    def _reposition_inset(self) -> None:
+        share = 0.45 if self._inset_big else 0.27
+        side = int(min(self.width(), self.height() * 1.6) * share)
+        self.inset.setFixedSize(side, side)
+        margin = 14
+        self.inset.move(self.width() - side - margin, self.height() - side - margin)
 
     # -- internals ------------------------------------------------------
     def _reposition_header(self) -> None:
@@ -758,6 +1196,8 @@ class MainWindow(QMainWindow):
             self._reposition_header()
         if self.status.isVisible():
             self._reposition_status()
+        if self.inset.isVisible():
+            self._reposition_inset()
 
     # ไร้ขอบเลยไม่มีแถบชื่อให้ลาก — ลากตรงไหนของหน้าต่างก็ได้แทน
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt API

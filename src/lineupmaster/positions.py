@@ -32,7 +32,10 @@ class Pin:
 
     xy: Point
     lineups: list[Lineup] = field(default_factory=list)
-    targets: list[Point] = field(default_factory=list)   # ปลายเส้นของแต่ละไลน์อัพ (เท่าที่มี)
+    # ปลายเส้นของแต่ละไลน์อัพ — **เรียงตรงกับ lineups ทีละตัวเสมอ** (ใบที่ยังไม่ได้จิ้มจุดปลาย
+    # เก็บเป็น None ไว้กันตำแหน่งไม่ให้เลื่อน) เพราะเลขที่โชว์บนจุดปลายทางคือ "ใบที่เท่าไหร่ของหมุดนี้"
+    # ถ้าปล่อยให้สั้นกว่า lineups เมื่อไหร่ กดเลขแล้วจะได้ผิดใบทันที
+    targets: list[Point | None] = field(default_factory=list)
 
 
 def _valid_point(value) -> Point | None:
@@ -138,9 +141,7 @@ def pins_for(lineups: list[Lineup], positions: dict[str, dict]) -> list[Pin]:
             pin = Pin(xy=src)
             pins.append(pin)
         pin.lineups.append(lu)
-        dst = _valid_point(entry.get("to"))
-        if dst is not None:
-            pin.targets.append(dst)
+        pin.targets.append(_valid_point(entry.get("to")))
 
     pins.sort(key=lambda p: (round(p.xy[1], 3), round(p.xy[0], 3)))
     return pins

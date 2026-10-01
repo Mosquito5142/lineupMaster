@@ -37,6 +37,23 @@ agents:
   gekko:    [gekko, เก็คโค่, เกคโค, เกคโก้]
   skye:     [skye, สกาย, สกายย์]
   harbor:   [harbor, ฮาร์เบอร์, ฮาเบอ]
+  breach:   [breach, บรีช]
+  chamber:  [chamber, แชมเบอร์]
+  clove:    [clove, โคลฟ]
+  deadlock: [deadlock, เดดล็อก, เดดล็อค]
+  iso:      [iso, ไอโซ]
+  jett:     [jett, เจ็ท, เจ็ต]
+  miks:     [miks, มิกส์]
+  neon:     [neon, นีออน]
+  phoenix:  [phoenix, ฟีนิกซ์]
+  raze:     [raze, เรซ]
+  reyna:    [reyna, เรย์น่า, เรน่า]
+  sage:     [sage, เซจ]
+  tejo:     [tejo, เตโฮ]
+  veto:     [veto, วีโต้]
+  vyse:     [vyse, ไวส์]
+  waylay:   [waylay, เวย์เลย์]
+  yoru:     [yoru, โยรุ]
 
 # สกิล — ตั้งชื่อโฟลเดอร์ด้วย tag ทางซ้าย
 abilities:

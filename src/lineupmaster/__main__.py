@@ -1,10 +1,14 @@
 """จุดเริ่มโปรแกรม (และตัวแจกงานให้เครื่องมือย่อย).
 
-    python -m lineupmaster                    เปิดหน้าต่างบนจอที่สอง
+    python -m lineupmaster                    เปิดหน้าเข้าโปรแกรม (launcher) — กด "เข้าโปรแกรม" = overlay
+    python -m lineupmaster --overlay          เข้า overlay บนจอที่สองเลย (ข้ามหน้าเข้าโปรแกรม)
     python -m lineupmaster --list             ดูว่าสแกนเจอไลน์อัพอะไรบ้าง (ไม่เปิด GUI)
     python -m lineupmaster --check-ocr        ทดสอบว่า OCR อ่านชื่อโซนใช้งานได้ไหม
     python -m lineupmaster --test-capture     ทดสอบว่าแคปจอเกมแล้วอ่านชื่อโซนได้ไหม
-    python -m lineupmaster manage             เปิดหน้าต่างจัดการคลัง
+    python -m lineupmaster manage             เปิดหน้าต่างจัดการคลัง (Qt แบบเดิม)
+    python -m lineupmaster web                เปิดหน้าจัดการคลังแบบเว็บในเบราว์เซอร์
+    python -m lineupmaster compose            ต่อรูปขั้นตอนหลายรูปเป็นไลน์อัพรูปเดียว
+    python -m lineupmaster browse             หาไลน์อัพจากเว็บมาเลือกเก็บเข้าคลัง
     python -m lineupmaster pin                เปิดเครื่องมือจิ้มหมุดบนแผนที่
     python -m lineupmaster maps               โหลดรูปแผนที่จาก valorant-api.com
     python -m lineupmaster callouts           ดึงชื่อโซนจาก valorant-api.com
@@ -234,6 +238,9 @@ def _last_map(path) -> str | None:
 # คำสั่งย่อย -> โมดูลของเครื่องมือใน tools/
 TOOLS = {
     "manage": "manage",
+    "web": "web_manage",
+    "compose": "compose_lineup",
+    "browse": "browse_lineups",
     "pin": "pin_lineups",
     "maps": "fetch_maps",
     "callouts": "fetch_callouts",
@@ -248,10 +255,10 @@ def _run_tool(name: str, args: list[str]) -> int:
     """เรียกเครื่องมือใน tools/ — ทำงานเหมือนกันทั้งตอนรันจากซอร์สและตอนเป็น exe."""
     import importlib
 
-    from .paths import ROOT, is_frozen
+    from .paths import APP, is_frozen
 
     if not is_frozen():
-        tools_dir = ROOT / "tools"
+        tools_dir = APP / "tools"
         if str(tools_dir) not in sys.path:
             sys.path.insert(0, str(tools_dir))
     module = importlib.import_module(TOOLS[name])
@@ -261,6 +268,12 @@ def _run_tool(name: str, args: list[str]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     raw = sys.argv[1:] if argv is None else argv
+    from .paths import migrate_legacy
+
+    try:
+        migrate_legacy()            # โฟลเดอร์รุ่นเก่า (ข้อมูลข้าง exe) → data/ ครั้งเดียว ก่อนใครอ่าน config
+    except OSError as error:
+        print(f"[!] ย้ายข้อมูลเข้าโฟลเดอร์ data ไม่สำเร็จ: {error}")
     if raw and raw[0] in TOOLS:
         _utf8_stdout()
         return _run_tool(raw[0], raw[1:])
@@ -270,6 +283,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--check-ocr", action="store_true", help="ทดสอบว่า OCR ใช้งานได้ไหม")
     parser.add_argument("--test-capture", action="store_true",
                         help="ทดสอบแคปจอเกม + อ่านชื่อโซน (เปิดเกมค้างไว้ก่อนรัน)")
+    parser.add_argument("--overlay", action="store_true",
+                        help="เข้า overlay เลย ไม่ผ่านหน้าเข้าโปรแกรม")
     args = parser.parse_args(argv)
     _utf8_stdout()
 
@@ -298,6 +313,10 @@ def main(argv: list[str] | None = None) -> int:
     icon = icon_path()
     if icon is not None:
         qapp.setWindowIcon(QIcon(str(icon)))
+
+    if not args.overlay:
+        from . import launcher
+        return launcher.run()
 
     qapp.setQuitOnLastWindowClosed(True)
     app = App(cfg)

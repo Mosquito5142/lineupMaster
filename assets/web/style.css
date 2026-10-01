@@ -67,6 +67,7 @@
   --stand-ink:  #1d7a45;
   --target-ink: #8a6000;
   --alert-ink:  #9a5a00;
+  --flag:       #b3261e;   /* ⚑ แจ้งผิดจากในเกม (F8) — แดงสด แยกจากแดงอิฐของปุ่มลบ */
 
   --r:   3px;          /* มนได้เฉพาะของที่กดได้ */
   --gap: 12px;
@@ -325,6 +326,28 @@ body.splitting-y { cursor: row-resize; user-select: none; }
 .card .slots .fav  { color: var(--target-ink); }
 /* ยังไม่จิ้มหมุด = ขีดเหลืองที่ขอบซ้ายของแถบคำอธิบาย กวาดตาหาได้ทั้งตารางโดยไม่ต้องอ่าน */
 .card.nopin .meta { box-shadow: inset 3px 0 0 var(--alert-ink); padding-left: 10px; }
+.card.flagged { outline: 2px solid var(--flag); }
+.card.flagged.active { outline-color: var(--flag); }
+.card .flag { color: var(--flag); font-weight: 700; }
+.card.active .flag { color: #ffb4ab; }
+
+/* ⚑ ต้องแก้ — ชิปแดงเมื่อมีใบค้าง จะได้เห็นทันทีที่เปิดเว็บ */
+.chip.flag.alert { color: var(--flag); border-color: var(--flag); font-weight: 600; }
+.chip.flag.alert.on { background: var(--flag); color: var(--sheet-2); }
+label.flag-check { color: var(--flag); }
+
+/* ================= ตัววาดทับรูป ================= */
+dialog.draw { width: 96vw; max-width: none; height: 94vh; max-height: none; padding: 10px;
+  display: none; flex-direction: column; gap: 8px; }
+dialog.draw[open] { display: flex; }
+.draw-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.draw-bar .group { display: inline-flex; gap: 4px; align-items: center; }
+.draw-bar .spacer { flex: 1; }
+.draw-title { max-width: 30ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.draw-bar .swatch { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--edge); padding: 0; cursor: pointer; }
+.draw-bar .swatch.on { border-color: var(--ink); box-shadow: 0 0 0 2px var(--sheet-2), 0 0 0 4px var(--ink); }
+.draw-stage { flex: 1; min-height: 0; background: var(--glass); display: flex; align-items: center; justify-content: center; }
+#draw-canvas { max-width: 100%; max-height: 100%; cursor: crosshair; touch-action: none; }
 
 .empty { padding: 48px 12px; text-align: center; color: var(--ink-2); }
 
@@ -762,6 +785,8 @@ p.merge-error { margin: 12px 0 0; font-size: 12px; }
   display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center;
   padding: 8px 10px; background: var(--sheet); margin-bottom: 4px;
 }
+.shrink-row progress { width: 140px; }
+.shrink-actions { display: flex; gap: 6px; }
 .set-row.changed { box-shadow: inset 3px 0 0 var(--target); }
 .set-label { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
 .set-label input[type="number"] { width: 82px; flex: none; }
@@ -792,3 +817,16 @@ dialog.curate label.check { flex-direction: row; align-items: center; gap: 7px; 
   display: inline-block; min-width: 16px; padding: 0 4px; text-align: center; font: inherit; font-size: 11px;
   background: var(--sheet-2); border: 1px solid var(--edge); border-radius: var(--r);
 }
+
+/* ================= แท็บคอมมูนิตี้ (community.js) ================= */
+#tab-community { overflow: auto; min-height: 0; }
+.com-page { padding: var(--pad); display: flex; flex-direction: column; gap: var(--gap); }
+.com-box { max-width: 560px; background: var(--sheet); padding: var(--pad); display: flex; flex-direction: column; gap: 9px; }
+.com-box h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.com-box label { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: var(--ink-2); }
+.com-box .primary { align-self: flex-start; }
+.com-help { margin: 8px 0; }
+.com-card .com-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.com-card .com-row .spacer { flex: 1; }
+.com-score { font-family: "Spline Sans Mono", ui-monospace, Consolas, monospace; font-weight: 600; }
+.chip.vote-down.on.bad { background: var(--flag); border-color: var(--flag); color: var(--sheet-2); }

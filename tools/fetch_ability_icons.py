@@ -1,6 +1,6 @@
 """โหลดรูปตัวละคร + ไอคอนสกิลจาก valorant-api.com (ฟรี ไม่ต้องล็อกอิน) — ไว้โชว์ข้างแผนที่ว่ากรองอะไรอยู่.
 
-เก็บไว้ที่ ``assets/agents/<agent>.png`` และ ``assets/abilities/<agent>/<แท็ก>.png`` พร้อม
+เก็บไว้ที่ ``assets/agents/<agent>.png`` (+ ภาพเต็มตัว ``assets/agents/full/<agent>.png``) และ ``assets/abilities/<agent>/<แท็ก>.png`` พร้อม
 ``assets/abilities/index.json`` = {agent: [{tag, name, slot, file}]} เรียงตาม AGENT_ABILITIES ถ้ามี
 
 แท็กของสกิลใช้ตัวแปลงเดียวกับหน้า "หาไลน์อัพจากเว็บ" (``lineup_sources.ability_tag``) เช่น
@@ -79,6 +79,10 @@ def main() -> int:
         icon = agent.get("displayIconSmall") or agent.get("displayIcon")
         if icon:
             _save_small(_get(icon), agents_dir / f"{aid}.png", 160)   # ของเว็บ 1024px ใหญ่เกินใช้
+        full = agent.get("fullPortrait")
+        if full:                          # ภาพเต็มตัวข้างหน้าเข้าโปรแกรม (launcher.py)
+            (agents_dir / "full").mkdir(exist_ok=True)
+            _save_small(_get(full), agents_dir / "full" / f"{aid}.png", 900)
         items = []
         used: set[str] = set()
         for ability in agent["abilities"]:

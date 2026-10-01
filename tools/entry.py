@@ -17,6 +17,43 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
+
+def _windowed_output() -> None:
+    """exe บิ้วแบบไม่มีคอนโซล (ไม่ให้หน้าต่างดำโผล่ตอนผู้ใช้เปิดโปรแกรม) → sys.stdout เป็น None
+    แล้ว print ทุกตัวในโปรแกรมพัง
+
+    เรียกจาก cmd/PowerShell (เช่น ``LineupMaster.exe --list``) = เกาะคอนโซลของตัวที่เรียก ผลลัพธ์ขึ้นตามเดิม
+    เปิดด้วยการดับเบิลคลิก = เขียนลง ``data/.cache/lineupmaster.log`` ไว้ดูตอนมีปัญหา
+    """
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    try:
+        import ctypes
+
+        if ctypes.windll.kernel32.AttachConsole(-1):          # ATTACH_PARENT_PROCESS
+            sys.stdout = open("CONOUT$", "w", encoding="utf-8", errors="replace", buffering=1)
+            sys.stderr = sys.stdout
+            return
+    except (OSError, AttributeError):
+        pass
+    from lineupmaster.paths import ROOT
+
+    log = ROOT / ".cache" / "lineupmaster.log"
+    try:
+        log.parent.mkdir(parents=True, exist_ok=True)
+        if log.is_file() and log.stat().st_size > 2_000_000:   # ไม่ให้โตไม่รู้จบ
+            log.unlink()
+        stream = open(log, "a", encoding="utf-8", errors="replace", buffering=1)
+    except OSError:
+        import io
+
+        stream = io.StringIO()
+    sys.stdout = sys.stdout or stream
+    sys.stderr = sys.stderr or stream
+
+
+_windowed_output()
+
 from lineupmaster.__main__ import main  # noqa: E402
 
 if __name__ == "__main__":

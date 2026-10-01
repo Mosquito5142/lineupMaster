@@ -202,6 +202,12 @@ def _merge_meta_entry(here: dict, there: dict) -> tuple[dict, tuple | None]:
     drilled = max(int(here.get("drilled") or 0), int(there.get("drilled") or 0))
     if drilled:
         out["drilled"] = drilled
+    # วิธียิง (เสียงพูด): เอาฝั่งที่ตรวจแล้วก่อนร่าง AI · ฝั่งเดียวที่มี = เอาอันนั้น
+    if there.get("howto") and (not here.get("howto") or (here.get("howto_ai") and not there.get("howto_ai"))):
+        out["howto"] = there["howto"]
+        out.pop("howto_ai", None)
+        if there.get("howto_ai"):
+            out["howto_ai"] = True
     mine, theirs = here.get("ability"), there.get("ability")
     if theirs and not mine:
         out["ability"] = theirs
@@ -337,6 +343,13 @@ def _without(data: dict, keys: set[str]) -> dict:
     view["uses"] = cut(view.get("uses") or {})
     return {**data, "positions": cut(data["positions"]), "meta": cut(data["meta"]),
             "view": view}
+
+
+def library_root(folder: Path) -> Path:
+    """โฟลเดอร์โปรแกรมรุ่นใหม่เก็บข้อมูลใน ``data/`` — ผู้ใช้ชี้ที่โฟลเดอร์โปรแกรม (ข้าง exe) ก็ต้องเจอคลัง
+    รุ่นเก่า (ข้อมูลข้าง exe ตรงๆ) ใช้โฟลเดอร์นั้นเลย."""
+    folder = Path(folder)
+    return folder / "data" if (folder / "data" / "lineups").is_dir() else folder
 
 
 def find_candidates(search_roots: list[Path], exclude: Path, limit: int = 12) -> list[dict]:
@@ -642,7 +655,7 @@ def _sidecars(s: _Sides, out: dict, ids) -> None:
 
 def plan(here: Path, there: Path) -> dict:
     """ดูว่าจะรวมอะไรบ้าง — **อ่านอย่างเดียว** ไม่แตะไฟล์ทั้งสองฝั่ง."""
-    here, there = Path(here).resolve(), Path(there).resolve()
+    here, there = library_root(here).resolve(), library_root(there).resolve()
     if here == there:
         raise ValueError("เลือกโฟลเดอร์ที่เปิดอยู่เองไม่ได้ — ต้องเป็นอีกโฟลเดอร์")
     if not lineups_dir(there).is_dir():

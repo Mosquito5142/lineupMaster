@@ -1,0 +1,381 @@
+/* ธีมมืดแนว VALORANT ให้ตรงกับหน้าเข้าโปรแกรม (src/lineupmaster/launcher.py) — โหลดทับ style.css
+ *
+ * style.css เดิมทั้งไฟล์อ้างสีผ่านตัวแปร (--table/--sheet/--ink/--act …) จึงเปลี่ยนทั้งหน้าได้ด้วยการ
+ * นิยามตัวแปรใหม่ตรงนี้ + แก้จุดที่ฝังสีสว่างไว้ตรงๆ · สีที่มีความหมาย (เขียว = ยืน, เหลือง = จุดตก,
+ * ฟ้า = ป้าย A/B/C, แดง = แจ้งผิด) คงความหมายเดิม ตรงกับ overlay ในเกม
+ */
+
+@font-face { font-family: "Kanit"; font-weight: 400; src: url(fonts/Kanit-Regular.ttf) format("truetype"); }
+@font-face { font-family: "Kanit"; font-weight: 500; src: url(fonts/Kanit-Medium.ttf) format("truetype"); }
+@font-face { font-family: "Kanit"; font-weight: 600; src: url(fonts/Kanit-SemiBold.ttf) format("truetype"); }
+
+:root {
+  --table:   #0F1923;   /* พื้นหน้า */
+  --sheet:   #16222D;   /* แผง / การ์ด */
+  --sheet-2: #1B2733;   /* แผงยก — hover, ช่องกรอก */
+  --edge:    #2A3845;   /* เส้น 1px */
+  --glass:   #0D1114;   /* พื้นหลังรูปไลน์อัพ/แผนที่ */
+  --ink:     #ECE8E1;
+  --ink-2:   #8B979F;
+  --ink-3:   #56626B;
+  --act:     #FF4655;   /* แดงแบรนด์ — ปุ่มหลักหนึ่งปุ่ม + ของที่เลือกอยู่ */
+  --act-2:   #FF5E6B;
+  --on-act:  #0F1923;   /* ตัวหนังสือบนแดง */
+  --stop:    #FF5A5A;
+  --stand-ink:  #4ADE80;
+  --target-ink: #FFD479;
+  --alert-ink:  #FFD479;
+  --flag:       #FF5A5A;
+  --side-w:  232px;
+  --cut:     12px;
+}
+
+html, body { color-scheme: dark; font-family: "Kanit", "Leelawadee UI", "Segoe UI", system-ui, sans-serif; font-size: 14px; }
+
+/* ---------- เปลือกหน้า: เมนูซ้าย + แถบบน + เนื้อหา ---------- */
+body {
+  grid-template-columns: var(--side-w) minmax(0, 1fr);
+  grid-template-rows: 60px minmax(0, 1fr);
+}
+body > [id^="tab-"] { grid-column: 2; grid-row: 2; }
+.side {
+  grid-column: 1; grid-row: 1 / 3;
+  display: flex; flex-direction: column; gap: 4px;
+  background: #0B141C;
+  border-right: 1px solid var(--edge);
+  padding: 14px 12px 14px;
+  min-height: 0; overflow: auto;
+  box-shadow: inset 4px 0 0 var(--act);
+}
+.side-brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 16px; font-size: 20px; font-weight: 500; }
+.side-brand .logo { width: 30px; height: 30px; flex: none; }
+.side-nav { display: flex; flex-direction: column; gap: 3px; flex: 1; }
+.side-head { margin: 16px 10px 6px; font-size: 12px; color: var(--ink-3); letter-spacing: .06em; }
+.side-item {
+  display: flex; align-items: center; gap: 11px;
+  width: 100%; text-align: left;
+  padding: 10px 12px; border: 0; border-radius: 0;
+  background: transparent; color: var(--ink-2);
+  font-size: 15px; font-weight: 500;
+  box-shadow: none;
+}
+.side-item:hover:not(:disabled) { background: var(--sheet-2); color: var(--ink); border: 0; }
+.side-item.on, .tab.side-item.on {
+  background: var(--sheet-2); color: var(--ink); font-weight: 500;
+  box-shadow: inset 3px 0 0 var(--act);
+}
+.side-item .ico { font-size: 20px; }
+.side-count { margin-left: auto; font-weight: 500; font-size: 13px; color: var(--ink-2); font-family: "Spline Sans Mono", ui-monospace, monospace; }
+.side-count.flag:not(:empty):not([data-zero]) { color: var(--flag); }
+.side-count.pin:not(:empty):not([data-zero]) { color: var(--target-ink); }
+.side-bottom { margin-top: 8px; border-top: 1px solid var(--edge) !important; padding-top: 14px; }
+
+/* ไอคอน Tabler เป็น mask — สีตามตัวหนังสือ (currentColor) */
+.ico {
+  display: inline-block; width: 1em; height: 1em; flex: none;
+  background: currentColor;
+  -webkit-mask: var(--i) center / contain no-repeat; mask: var(--i) center / contain no-repeat;
+}
+
+.top {
+  grid-column: 2; grid-row: 1;
+  height: 60px; gap: 16px; padding: 0 22px;
+  background: var(--table);
+  border-bottom: 1px solid var(--edge);
+}
+.top .count { font-size: 13px; }
+.search-box {
+  flex: 1; max-width: 560px; display: flex; align-items: center; gap: 8px;
+  background: var(--sheet-2); border: 1px solid var(--edge); padding: 0 12px; color: var(--ink-2);
+}
+.search-box .search { border: 0; background: transparent; height: 36px; flex: 1; font-size: 14px; }
+.search-box:focus-within { border-color: var(--act); }
+.top-actions { margin-left: auto; }
+.tabs { display: none; }
+
+/* ---------- ปุ่ม / ช่องกรอก — มุมตัดแทนมุมมน ---------- */
+button { background: var(--sheet-2); border-color: var(--edge); border-radius: 0; font-size: 13px; }
+button:hover:not(:disabled) { background: #243240; border-color: var(--ink-3); }
+.primary, button.primary {
+  background: var(--act); border-color: var(--act); color: var(--on-act); font-weight: 600;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
+  display: inline-flex; align-items: center; gap: 7px; padding: 7px 16px;
+}
+.primary:hover:not(:disabled) { background: var(--act-2); border-color: var(--act-2); color: var(--on-act); }
+.danger { color: var(--stop); background: transparent; border-color: #5a2a30; }
+.danger:hover:not(:disabled) { background: var(--stop); border-color: var(--stop); color: var(--on-act); }
+button.primary.danger { background: var(--stop); color: var(--on-act); }
+.chip.on, .toggle.on, .icon.on { background: var(--act); border-color: var(--act); color: var(--on-act); }
+select, input[type="text"], input[type="search"], input[type="url"], textarea {
+  background: var(--sheet-2); border-color: var(--edge); border-radius: 0; color: var(--ink); font-size: 13px;
+}
+select option { background: var(--sheet); }
+::selection { background: var(--act); color: var(--on-act); }
+
+/* ---------- แถบตัวกรอง ---------- */
+.filters { background: var(--table); padding: 10px 22px; gap: 10px; }
+.filters label { font-size: 12.5px; }
+
+/* ---------- การ์ดไลน์อัพ ---------- */
+.card {
+  background: var(--sheet); border: 1px solid var(--edge);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%);
+}
+.card:hover { background: var(--sheet-2); }
+.card.active { outline: 2px solid var(--act); background: var(--sheet-2); }
+.card.active .meta { background: #2a1519; color: var(--ink); }
+.card.active .slots, .card.active .name i, .card.active .name u { color: var(--ink-2); }
+.card.active .slots .site { color: var(--ink); }
+.card.picked { outline: 2px dashed var(--act); background: #1f2a36; }
+.card.active .flag { color: var(--flag); }
+.card .name { font-size: 13px; }
+
+/* ---------- แผงแก้ไข ---------- */
+.detail, .preview, .mappane, .form { background: var(--sheet); }
+.mapbar { background: var(--sheet); }
+
+/* ขั้นตอนปักหมุด 1 คลิกจุดยืน → 2 คลิกจุดตก → 3 ปักครบ */
+.pin-steps { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 13px; color: var(--ink-3); flex-wrap: wrap; }
+.pin-steps span { display: inline-flex; align-items: center; gap: 6px; }
+.pin-steps b {
+  width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  border: 1.5px solid var(--ink-3); font-size: 12px;
+}
+.pin-steps i { flex: 1; min-width: 12px; height: 1px; background: var(--edge); font-style: normal; }
+.pin-steps .now { color: var(--ink); }
+.pin-steps .now b { background: var(--stand-ink); border-color: var(--stand-ink); color: var(--on-act); }
+.pin-steps .done b { border-color: var(--stand-ink); color: var(--stand-ink); }
+.pin-steps[data-step="3"] .now b { background: var(--stand-ink); }
+#btn-unflag-next { border-color: var(--flag); color: var(--flag); background: transparent; }
+#btn-unflag-next:hover { background: var(--flag); color: var(--on-act); }
+
+/* ---------- แถบสั่งเหมา / ข้อความแจ้ง / กล่องโต้ตอบ ---------- */
+.bulkbar { background: var(--sheet-2); border: 1px solid var(--act); box-shadow: 0 12px 30px rgba(0, 0, 0, .5); color: var(--ink); }
+.bulkbar .count { color: var(--ink-2); }
+.bulkbar button { border-color: var(--edge); color: var(--ink); }
+.bulkbar button:hover:not(:disabled) { background: #243240; color: var(--ink); }
+.toast { background: var(--sheet-2); color: var(--ink); border: 1px solid var(--edge); }
+dialog {
+  background: var(--sheet); color: var(--ink); border: 1px solid var(--edge); border-radius: 0;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .6);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%);
+}
+dialog::backdrop { background: rgba(5, 10, 15, .72); }
+.set-result.warn, .set-tag.restart { color: var(--target-ink); }
+body.dragging::after { background: rgba(15, 25, 35, .88); color: var(--ink); border-color: var(--act); }
+.badge.owned { color: var(--flag); }
+
+/* กล่องยืนยัน/แจ้ง/ถามข้อความของเราเอง (ui.js) แทนกล่องของเบราว์เซอร์ */
+dialog.ui-box { width: min(460px, 92vw); padding: 22px 24px 20px; }
+dialog.ui-box h2 { font-size: 18px; font-weight: 500; margin: 0 0 8px; }
+dialog.ui-box .ui-msg { white-space: pre-line; color: var(--ink-2); font-size: 14px; line-height: 1.6; max-height: 50vh; overflow: auto; }
+dialog.ui-box input { width: 100%; margin-top: 12px; height: 36px; }
+dialog.ui-box menu { display: flex; justify-content: flex-end; gap: 8px; margin: 20px 0 0; padding: 0; }
+
+/* จอแคบ — เมนูซ้ายเหลือแค่ไอคอน */
+@media (max-width: 1400px) {
+  :root { --side-w: 64px; }
+  .side-brand span, .side-item { font-size: 0; }
+  .side-item { justify-content: center; padding: 12px 0; }
+  .side-item .ico { font-size: 22px; }
+  .side-count, .side-head { display: none; }
+  .side-brand { justify-content: center; padding: 4px 0 16px; }
+}
+
+/* ตัวกรองตัวละคร/สกิลแบบรูป (app.js renderFaces) — select เดิมซ่อนไว้ ใช้เก็บค่า */
+.face-select { display: none !important; }
+.face-row { display: flex; gap: 5px; align-items: center; }
+.face-row[hidden] { display: none; }
+.face {
+  width: 34px; height: 34px; padding: 0; position: relative; overflow: hidden;
+  background: var(--sheet-2); border: 1px solid var(--edge); opacity: .55;
+}
+.face img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.face span { display: none; font-size: 11px; }
+.face.noimg span { display: block; }
+.face:hover:not(:disabled) { opacity: .9; background: var(--sheet-2); }
+.face.on { opacity: 1; border: 2px solid var(--act); }
+#f-abils .face { background: #0B141C; }
+#f-abils .face img { object-fit: contain; padding: 4px; }
+
+/* ตัวเลือกตัวละคร: ปุ่มเดียว กดแล้วตารางรูปหน้าลงมา (app.js renderAgentPicker) */
+.agent-pick { position: relative; }
+.agent-btn {
+  display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px 0 3px; min-width: 150px;
+}
+.agent-btn img { width: 28px; height: 28px; object-fit: cover; background: var(--glass); }
+.agent-btn .all { padding-left: 7px; color: var(--ink-2); }
+.agent-btn i { margin-left: auto; font-style: normal; color: var(--ink-2); }
+.agent-btn.on { border-color: var(--act); }
+.agent-pop {
+  position: absolute; z-index: 60; top: calc(100% + 6px); left: 0;
+  width: 420px; max-height: 420px; overflow: auto; padding: 10px;
+  background: var(--sheet); border: 1px solid var(--edge); box-shadow: 0 18px 44px rgba(0, 0, 0, .55);
+}
+.agent-pop input { width: 100%; height: 34px; margin-bottom: 10px; }
+.agent-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.agent-cell {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 4px;
+  background: var(--sheet-2); border: 1px solid transparent;
+}
+.agent-cell img, .agent-cell .all-ico {
+  width: 56px; height: 56px; object-fit: cover; background: var(--glass);
+  display: flex; align-items: center; justify-content: center; font-size: 22px; color: var(--act);
+}
+.agent-cell span { font-size: 12.5px; }
+.agent-cell small { font-size: 11px; color: var(--ink-2); font-family: "Spline Sans Mono", ui-monospace, monospace; }
+.agent-cell:hover:not(:disabled) { border-color: var(--ink-3); }
+.agent-cell.on { border-color: var(--act); }
+
+/* ระหว่างรูปย่อยังโหลด — แถบวิ่งแทนช่องดำ (ไม่ให้ดูเหมือนคลังว่าง) */
+@keyframes lm-shimmer { from { background-position: -200px 0; } to { background-position: 200px 0; } }
+.card img {
+  background: linear-gradient(90deg, #0D1114 0, #1B2733 50%, #0D1114 100%) 0 0 / 400px 100% repeat-x #0D1114;
+  animation: lm-shimmer 1.2s linear infinite;
+}
+.card img.ok { animation: none; background: var(--glass); }
+
+/* เพิ่มรูป (M6): ขั้น 1 เลือกรูป → 2 ตั้งค่า → 3 ปักหมุด (หลังเพิ่มเปิดใบใหม่ให้ปักเลย) */
+.add-steps { padding: 4px 0 10px; }
+.add-count { font-size: 13px; color: var(--ink-2); font-weight: 400; margin-left: 8px; }
+#add-dialog { width: min(640px, 94vw); }
+#add-dialog img { max-height: 280px; }
+
+/* เครื่องมือ (คัดใบซ้ำ / รวมคลัง) — เกือบเต็มจอแทนกล่องเล็ก */
+dialog.merge, dialog.curate { width: min(1280px, 96vw); height: 90vh; max-height: 90vh; }
+
+/* รายละเอียดใบคอมมูนิตี้ (M9) */
+dialog.com-detail { width: min(1200px, 96vw); height: 86vh; padding: 18px 20px; }
+dialog.com-detail[open] { display: flex; flex-direction: column; gap: 12px; }
+.cd-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.cd-head h2 { font-size: 20px; margin: 0; }
+.cd-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr); gap: 16px; }
+.cd-img { background: var(--glass); display: flex; align-items: center; justify-content: center; min-height: 0; }
+.cd-img img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.cd-side { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.cd-map { flex: 1; min-height: 240px; background: var(--glass); }
+.cd-score { display: flex; gap: 14px; align-items: baseline; font-size: 18px; font-family: "Spline Sans Mono", ui-monospace, monospace; }
+.cd-actions { display: flex; gap: 8px; align-items: center; }
+.cd-note { margin: 0; color: var(--ink-2); white-space: pre-line; }
+.stand-dot { color: var(--stand-ink); } .target-dot { color: var(--target-ink); }
+
+.empty { text-align: center; padding: 60px 20px; color: var(--ink-2); font-size: 15px; line-height: 2; }
+.empty .primary { margin-top: 12px; }
+/* รายการรูปทางซ้ายกว้างอย่างน้อย 180px เสมอ — ค่าที่เคยลากตัวคั่นไว้แคบสุดๆ จะไม่ทำให้รายการหายไป */
+.body:not(.wide) { grid-template-columns: minmax(180px, var(--lib-w)) 7px minmax(420px, 1.3fr); }
+
+/* แผงแก้ไข (M3): สกิลเป็นไอคอน + ชื่อสกิลที่เลือกต่อท้าย */
+.e-abil-box { display: flex; align-items: center; gap: 8px; }
+#e-abils .face { background: #0B141C; width: 38px; height: 38px; }
+#e-abils .face img { object-fit: contain; padding: 4px; }
+#e-abils::after { content: attr(data-label); font-size: 13px; color: var(--ink-2); margin-left: 6px; }
+#e-abils .face.noimg { width: auto; padding: 0 8px; opacity: .8; }
+.form { padding: 14px 16px; border-top: 1px solid var(--edge); }
+.form-actions { gap: 10px; }
+#route-line { font-size: 18px; }
+
+/* ลากรูป = เลื่อนดูรูปที่ซูมอยู่ ไม่ใช่ลากไฟล์ออก */
+img { -webkit-user-drag: none; user-select: none; }
+
+/* การ์ดที่ยังไม่ได้ตั้งสกิล — ตัวเหลืองแบบเดียวกับขีด "ยังไม่ปักหมุด" */
+.card .noabil { color: var(--alert-ink); font-style: normal; }
+
+/* วิธียิงที่ Claude ร่างจากรูป ยังไม่ได้ตรวจ (tools/howto_batch.py) */
+.howto-head { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.howto-ai { color: var(--alert-ink); font-size: 12px; display: inline-flex; align-items: center; gap: 6px; }
+.card.howto-draft .meta .name::after {
+  content: "AI"; margin-left: 6px; padding: 0 5px; font-size: 10px; border-radius: 3px;
+  color: var(--alert-ink); border: 1px solid currentColor; vertical-align: middle;
+}
+
+/* นำเข้าจากคลิป YouTube (clip.js) */
+.clipbar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; margin: 6px 0;
+  background: var(--sheet); border: 1px solid var(--edge); }
+.clipbar input { flex: 1; min-width: 200px; }
+.clippane { margin-top: 8px; }
+.clipinfo { display: flex; gap: 10px; align-items: baseline; margin-bottom: 6px; }
+.framestrip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; }
+.framestrip .frame { position: relative; flex: 0 0 auto; width: 160px; padding: 0; border: 2px solid var(--edge);
+  background: var(--table); cursor: pointer; }
+.framestrip .frame img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
+.framestrip .frame span { position: absolute; left: 4px; bottom: 3px; font-size: 11px; color: #fff;
+  text-shadow: 0 0 3px #000; }
+.framestrip .frame.on { border-color: var(--act); }
+.framestrip .frame.on::after { content: attr(data-n); position: absolute; top: 4px; right: 4px; min-width: 20px;
+  height: 20px; border-radius: 10px; background: var(--act); color: var(--on-act); font-weight: 600;
+  font-size: 12px; display: grid; place-items: center; }
+.clipsubs { margin-top: 4px; }
+/* แถบเฟรมยาวหลายสิบรูปต้องเลื่อนในตัวเอง ห้ามดันคอลัมน์แผ่นรูปให้กว้างเกินจอ */
+#s-onepane .sheetpane, .clippane, .framestrip { min-width: 0; max-width: 100%; }
+.gifbar { display: flex; align-items: center; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+#s-gifmode.on { border-color: var(--act); color: var(--act); }
+.framestrip .frame.gif { box-shadow: inset 0 -4px 0 #ffd479; }
+.gifprev { display: block; max-width: 480px; margin-top: 6px; border: 1px solid var(--edge); }
+
+/* ---------- หน้าทำวิดีโอ (video.js) ---------- */
+#s-onepane .videopane { display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto auto; gap: 6px;
+  min-height: 0; min-width: 0; }
+.videowrap { position: relative; display: grid; place-items: center; min-height: 0; overflow: hidden;
+  background: var(--glass); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .09); }
+#v-player { width: 100%; height: 100%; object-fit: contain; display: block; }
+.vbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 5px 7px; background: var(--sheet); }
+.vtimeline { display: block; width: 100%; height: 96px; background: var(--sheet); cursor: crosshair; touch-action: none; }
+.vlen { font-size: 13px; color: var(--ink-2); }
+.vlen.bad { color: var(--stop); font-weight: 600; }
+#s-take.over { background: var(--stop); border-color: var(--stop); }
+.howtobox { margin-top: var(--gap); }
+.howtobox label { display: grid; gap: 4px; font-size: 12px; color: var(--ink-2); }
+.howtobox textarea { width: 100%; resize: vertical; font: inherit; }
+
+/* ---------- แผนที่รวม (coverage.js) ---------- */
+#tab-coverage { display: flex; flex-direction: column; min-height: 0; }
+#tab-coverage[hidden] { display: none; }
+.cv-body { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: var(--gap);
+  padding: var(--gap) var(--pad) var(--pad); min-height: 0; }
+.cv-mappane { display: flex; flex-direction: column; gap: 6px; min-height: 0; min-width: 0; }
+.cv-mappane .mapbar { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; padding: 5px 7px; background: var(--sheet); }
+.cv-stage { flex: 1; aspect-ratio: auto; min-height: 60vh; cursor: pointer; }
+.cv-side { background: var(--sheet); padding: var(--gap); overflow: auto; min-height: 0; }
+.cv-side h3 { margin: 4px 0 6px; font-size: 14px; }
+.cv-empty { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 10px; }
+.cv-gap { padding: 2px 8px; font-size: 12px; border-radius: 10px; border: 1px solid #7a2d34; background: #2a1519;
+  color: #ff8a8a; cursor: pointer; }
+.cv-gap:hover { border-color: #ff5a5a; }
+.cv-howto { margin: 4px 0 10px; }
+.cv-minebox { margin: 4px 0 10px; } .cv-minebox summary { cursor: pointer; color: var(--ink-2); font-size: 13px; }
+.cv-minebox .cv-list { margin-top: 6px; }
+#cv-zonebox h4 { margin: 8px 0 6px; font-size: 13px; color: #c084fc; }
+.cv-webgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
+.cv-webcell { display: grid; gap: 3px; padding: 3px; text-align: left; background: var(--sheet-2);
+  border: 1px solid var(--edge); border-radius: 6px; cursor: pointer; }
+.cv-webcell:hover { border-color: #c084fc; }
+.cv-webcell img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 4px; background: var(--glass); }
+.cv-webcell span { font-size: 11px; color: var(--ink-2); line-height: 1.3; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.cv-box { position: fixed; inset: 0; z-index: 50; background: rgba(4, 6, 9, .78); display: grid; place-items: center; padding: 20px; }
+.cv-box[hidden] { display: none; }
+.cv-boxcard { width: min(1400px, 96vw); max-height: 94vh; display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--sheet); border: 1px solid var(--edge); border-radius: 10px; overflow: hidden; }
+.cv-boxhead { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 10px 14px;
+  border-bottom: 1px solid var(--edge); }
+.cv-boxhead h2 { margin: 0; font-size: 17px; } .cv-boxhead p { margin: 2px 0 0; }
+.cv-boxsteps { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 8px; padding: 10px;
+  overflow: auto; background: var(--glass); }
+.cv-boxsteps img { width: 100%; border-radius: 6px; }
+.cv-boxfoot { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--edge); flex-wrap: wrap; }
+.cv-list { display: grid; gap: 6px; }
+.cv-item { display: grid; grid-template-columns: 96px 1fr; gap: 8px; align-items: center; text-align: left;
+  padding: 4px; background: var(--sheet-2); border: 1px solid var(--edge); border-radius: 6px; cursor: pointer; }
+.cv-item:hover { border-color: var(--act); }
+.cv-item img { width: 96px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 4px; background: var(--glass); }
+.cv-item b { display: block; font-size: 12.5px; font-weight: 500; }
+.cv-item small { color: var(--ink-2); font-size: 11.5px; }
+@media (max-width: 900px) { .cv-body { grid-template-columns: 1fr; } .cv-stage { min-height: 55vh; } }
+
+.cv-table { width: 100%; border-collapse: collapse; margin: 0 0 14px; font-size: 12.5px; }
+.cv-table th { text-align: left; font-weight: 500; color: var(--ink-2); padding: 3px 4px; }
+.cv-table td { padding: 2px 3px; }
+.cv-cell { width: 100%; padding: 4px 0; border-radius: 6px; border: 1px solid var(--edge); background: var(--sheet-2);
+  color: var(--ink); font-weight: 600; cursor: pointer; }
+.cv-cell.zero { color: #ff8a8a; border-color: #7a2d34; background: #2a1519; }
+.cv-cell.on { outline: 2px solid var(--act); }

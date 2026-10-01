@@ -22,8 +22,10 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import stat
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parents[1]
@@ -32,6 +34,9 @@ sys.path.insert(0, str(_HERE / "src"))
 from lineupmaster.paths import ROOT  # noqa: E402
 
 DIST = ROOT / "dist" / "LineupMaster"
+# ข้อมูลผู้ใช้ + config อยู่ใน data/ (ข้าง exe เหลือแค่ LineupMaster.exe, _internal, assets, data)
+# ต้องตรงกับ lineupmaster.paths.ROOT ตอนเป็น exe
+DATA = DIST / "data"
 # นอก DIST แต่ยังอยู่ใต้ dist/ — รอดจากขั้นตอนที่ PyInstaller ลบ DIST ทิ้งทั้งโฟลเดอร์ (ดู
 # _stash_existing_data ด้านล่างว่าทำไมต้องมี)
 STASH = ROOT / "dist" / "_stash"
@@ -40,19 +45,37 @@ SPEC = ROOT / "LineupMaster.spec"
 # ไฟล์ที่ต้องมีข้างๆ exe ถึงจะเปิดได้ (เล็ก ก๊อปทุกครั้ง)
 NEEDED = ["config.yaml", "aliases.yaml"]
 # ข้อมูลผู้ใช้ ก๊อปเฉพาะตอนสั่ง --with-data
-USER_DATA = ["lineups", "positions.json", "last-view.json", "callouts.json", "capture.json", "meta.json"]
+# **ไฟล์/โฟลเดอร์ข้อมูลใหม่ที่เก็บใน dist ต้องเพิ่มเข้ารายการนี้เสมอ** — PyInstaller --clean ลบ dist
+# ทิ้งทั้งโฟลเดอร์ทุกครั้งที่บิ้ว ของที่ไม่อยู่ในนี้หายเงียบๆ (เคยหาย: .trash ที่ควรกู้รูปที่ลบได้,
+# changes.json บันทึกของตัวรวมคลัง, settings.json ค่าที่ปรับจากหน้าตั้งค่า)
+USER_DATA = ["lineups", "positions.json", "last-view.json", "callouts.json", "capture.json",
+             "meta.json", "compose.json", "browse.json", "changes.json", "settings.json", ".trash",
+             ".originals",   # รูปต้นฉบับก่อนวาดทับในหน้าเว็บ (กด "↺ รูปเดิม" ได้)
+             "community.json", ".community",   # เซิร์ฟเวอร์คอมมูนิตี้ + การล็อกอิน/โหวตค้างส่ง
+             "learn.json"]   # F10 ซูมตามตัว: เคยเลือกใบไหนในสถานการณ์ไหน (learn.py)
 
-# shortcut ที่จะสร้างในโฟลเดอร์ผลลัพธ์: (ชื่อไฟล์, argument ที่ส่งให้ exe)
-SHORTCUTS = [
-    ("จัดการคลังไลน์อัพ.lnk", "manage"),
-    ("จิ้มหมุดบนแผนที่.lnk", "pin"),
-    ("โหลดรูปแผนที่.lnk", "maps"),
-    ("ดึงชื่อโซน.lnk", "callouts"),
-    ("โหลดรูปอ้างอิงชื่อโซน.lnk", "callout-reference"),
-    ("วางตำแหน่งชื่อโซน.lnk", "place-callouts"),
-    ("วางตำแหน่งชื่อโซนอัตโนมัติ.lnk", "auto-callouts"),
-    ("เลือกกรอบแคปชื่อโซน.lnk", "capture-region"),
-]
+# zip แจกเพื่อน (--release): ของใน USER_DATA ไม่ติดไป ยกเว้นพวกนี้ที่เป็นข้อมูลของ "แมพ/เซิร์ฟเวอร์"
+# ไม่ใช่ของส่วนตัว — ชื่อโซน (ใช้ทั้ง OCR และป้ายบนแผนที่) กับที่อยู่เซิร์ฟเวอร์คอมมูนิตี้
+RELEASE_KEEP = {"callouts.json", "community.json"}
+RELEASE_ZIP = ROOT / "dist" / "LineupMaster-แจกเพื่อน.zip"
+
+
+def _dist_extras() -> list[str]:
+    """ของใน dist ที่ไม่ได้มาจากซอร์ส แต่ต้องรอดการบิ้วด้วย (พักไว้แล้วคืนเหมือน USER_DATA).
+
+    - ``.cache``: ผลตรวจรูปทีละใบ (``<agent>-review/done.json`` = ใบที่ตรวจแล้ว ไม่ตรวจซ้ำ),
+      แคตตาล็อกเว็บไลน์อัพ, รูปย่อ — เคยหายไปกับการบิ้วมาแล้ว (2026-09-26)
+    - ``*-review*.html``: หน้าสรุปผลตรวจรายใบ (apply_review.py) ที่ส่งให้ผู้ใช้ดู
+    ไม่ใส่ใน USER_DATA เพราะ ``--with-data`` จะก๊อปของพวกนี้จากซอร์สทับ ซึ่งไม่มีความหมาย
+    """
+    if not DIST.exists():
+        return []
+    reviews = {p.name for folder in (DATA, DIST) if folder.is_dir() for p in folder.glob("*-review*.html")}
+    return [".cache", *sorted(reviews)]
+
+# ไม่สร้างทางลัด (.lnk) แล้ว — ทุกอย่างเข้าจากหน้าเข้าโปรแกรม (launcher.py) ของ LineupMaster.exe
+# เครื่องมือของคนดูแล (โหลดแผนที่/ชื่อโซนตอนมีแมพใหม่ ฯลฯ) ยังเรียกได้ด้วย `LineupMaster.exe <คำสั่ง>`
+# ดูรายการคำสั่งที่ src/lineupmaster/__main__.py
 
 
 def _utf8_stdout() -> None:
@@ -76,13 +99,17 @@ def _stash_existing_data() -> list[str]:
     ไว้ในนั้นตรงๆ (ใช้ exe เป็นหลักไม่ผ่านซอร์สเลย) แล้วบิ้วใหม่อีกครั้ง — เช่นตอนอัปเดตแก้บั๊ก —
     ข้อมูลจะหายไปเงียบๆ ทั้งหมด ฟังก์ชันนี้จึงต้องย้ายออกมาไว้นอก DIST ก่อนเรียก PyInstaller ทุกครั้ง
     """
-    if STASH.exists():
-        shutil.rmtree(STASH, ignore_errors=True)
+    if STASH.exists() and any(STASH.iterdir()):
+        # ห้ามลบทิ้งเด็ดขาด — ที่พักที่ค้างอยู่คือข้อมูลจริงของบิ้วรอบก่อนที่ล้มกลางทาง (เคยเกือบหายมาแล้ว)
+        raise SystemExit(f"[x] มีข้อมูลที่พักค้างจากบิ้วรอบก่อนอยู่ที่ {STASH}\n"
+                         f"    ย้ายของในนั้นกลับเข้า {DATA} เองก่อน (ไม่ทับของที่มีอยู่) แล้วค่อยบิ้วใหม่")
+    shutil.rmtree(STASH, ignore_errors=True)
     stashed: list[str] = []
     if not DIST.exists():
         return stashed
-    for name in USER_DATA:
-        source = DIST / name
+    for name in USER_DATA + _dist_extras():
+        # data/ ก่อน · ของรุ่นเก่าที่วางข้าง exe ตรงๆ ก็พักไว้ด้วย แล้วคืนเข้า data/ = ย้ายให้เองตอนบิ้ว
+        source = DATA / name if (DATA / name).exists() else DIST / name
         has_content = source.is_file() or (source.is_dir() and any(source.iterdir()))
         if not has_content:
             continue
@@ -108,7 +135,8 @@ def _restore_stashed_data(stashed: list[str]) -> list[str]:
         source = STASH / name
         if not source.exists():
             continue
-        target = DIST / name
+        DATA.mkdir(parents=True, exist_ok=True)
+        target = DATA / name
         if target.exists():
             # มีของใหม่กว่าเกิดขึ้นที่ตำแหน่งเดิมแล้ว (ระหว่างพักไว้) — ไม่ทับ ย้ายของที่พักไว้
             # ไปเก็บสำรองข้างๆ ให้ไปเทียบ/กู้เองแทน
@@ -124,6 +152,35 @@ def _restore_stashed_data(stashed: list[str]) -> list[str]:
     return conflicts
 
 
+def _force_rmtree(path: Path, attempts: int = 5) -> bool:
+    """ลบทั้งโฟลเดอร์ทิ้งแบบทนทาน — ล้าง ReadOnly ก่อนลบ + ลองใหม่ถ้าโดนล็อกชั่วคราว.
+
+    โฟลเดอร์รูป PNG (``assets/maps``, ``assets/callout_reference``) มักติดแอตทริบิวต์
+    ReadOnly มาจากต้นทางเอง (Windows Explorer ตั้งให้อัตโนมัติกับโฟลเดอร์ที่เคยดูแบบ
+    ไอคอนตัวอย่าง) แล้ว ``shutil.copytree`` ก็ก๊อปแอตทริบิวต์นั้นติดไปด้วยทุกครั้ง — PyInstaller
+    เองไม่ล้าง ReadOnly ก่อนลบ จึงพัง ``os.rmdir`` กลางทางแบบเดิมซ้ำๆ ทุกครั้งที่บิ้วใหม่ ลบเอง
+    ตรงนี้ก่อนเรียก PyInstaller เพื่อไม่ให้มันไปเจอปัญหานี้เลย (มีลองใหม่ไว้เผื่อโดน Explorer/
+    ตัวสร้าง thumbnail แตะไฟล์ค้างชั่วครู่ด้วย ซึ่งเจอมาแล้วว่าเกิดได้จริงกับโฟลเดอร์รูปที่เพิ่งก๊อป)
+    """
+    if not path.exists():
+        return True
+    for attempt in range(attempts):
+        for root, dirs, files in os.walk(path):
+            for name in dirs + files:
+                try:
+                    (Path(root) / name).chmod(stat.S_IWRITE)
+                except OSError:
+                    pass
+        try:
+            shutil.rmtree(path)
+            return True
+        except OSError:
+            if attempt == attempts - 1:
+                return False
+            time.sleep(1)
+    return False
+
+
 def ensure_pyinstaller() -> bool:
     try:
         import PyInstaller  # noqa: F401
@@ -136,38 +193,15 @@ def ensure_pyinstaller() -> bool:
 
 
 def make_shortcuts() -> None:
-    """สร้าง .lnk ที่ชี้ไป exe ตัวเดียวกันแต่ส่ง argument ต่างกัน.
+    """เก็บกวาดทางลัดรุ่นเก่า (.lnk + โฟลเดอร์ "ตั้งค่าแผนที่") ที่อาจค้างอยู่ใน dist — ไม่สร้างใหม่แล้ว.
 
-    เขียนเป็นไฟล์ .ps1 แล้วค่อยเรียก แทนที่จะส่งสคริปต์ผ่าน -Command เพราะชื่อ shortcut
-    เป็นภาษาไทย ถ้าส่งผ่านบรรทัดคำสั่งจะโดน codepage ของคอนโซลทำพัง
-    และต้องเซฟเป็น utf-8-sig เพราะ PowerShell 5.1 อ่าน .ps1 เป็น UTF-8 ต่อเมื่อมี BOM
+    โปรแกรมเหลือทางเข้าทางเดียวคือ LineupMaster.exe (หน้าเข้าโปรแกรม) ดูมืออาชีพกว่าไฟล์ลัดสิบตัว
     """
-    exe = DIST / "LineupMaster.exe"
-    icon = ROOT / "assets" / "icon.ico"
-    lines = ["$w = New-Object -ComObject WScript.Shell"]
-    for _name, arg in SHORTCUTS:
-        lines += [
-            f"$s = $w.CreateShortcut('{DIST / f'_tmp_{arg}.lnk'}')",
-            f"$s.TargetPath = '{exe}'",
-            f"$s.Arguments = '{arg}'",
-            f"$s.WorkingDirectory = '{DIST}'",
-            f"$s.IconLocation = '{icon},0'",
-            "$s.Save()",
-        ]
-    script = ROOT / "dist" / "_shortcuts.ps1"
-    script.write_text("\n".join(lines), encoding="utf-8-sig")
-    subprocess.run(
-        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
-        check=False,
-        capture_output=True,
-    )
-    script.unlink(missing_ok=True)
-
-    # เปลี่ยนเป็นชื่อไทยด้วย Python — ตัวไฟล์ .lnk ไม่ได้เก็บชื่อตัวเองไว้ข้างใน จึงเปลี่ยนได้
-    for name, arg in SHORTCUTS:
-        temp = DIST / f"_tmp_{arg}.lnk"
-        if temp.is_file():
-            temp.replace(DIST / name)
+    for path in DIST.glob("*.lnk"):
+        path.unlink(missing_ok=True)
+    for folder in DIST.glob("ตั้งค่าแผนที่*"):
+        if folder.is_dir():
+            shutil.rmtree(folder, ignore_errors=True)
 
 
 def _copy_side_files(quiet: bool = False) -> None:
@@ -184,13 +218,18 @@ def _copy_side_files(quiet: bool = False) -> None:
     for name in NEEDED:
         source = ROOT / name
         if source.is_file():
-            shutil.copy2(source, DIST / name)
+            DATA.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, DATA / name)
             say(f"  ก๊อป {name}")
-    for folder in ("maps", "callout_reference"):
+    for folder, unit in (("maps", "แมพ"), ("callout_reference", "แมพ"), ("web", "ไฟล์"),
+                         ("agents", "รูป"), ("abilities", "ไฟล์"),
+                         ("fonts", "ไฟล์"), ("icons", "ไฟล์")):
         source = ROOT / "assets" / folder
         if source.is_dir():
             shutil.copytree(source, DIST / "assets" / folder, dirs_exist_ok=True)
-            say(f"  ก๊อป assets/{folder} ({len(list(source.glob('*.png')))} แมพ)")
+            # นับแบบลงโฟลเดอร์ย่อยด้วย — assets/web มีโฟลเดอร์ fonts/ อยู่ข้างใน
+            count = len(list(source.rglob("*.png" if unit == "แมพ" else "*.*")))
+            say(f"  ก๊อป assets/{folder} ({count} {unit})")
     icon = ROOT / "assets" / "icon.ico"
     if icon.is_file():
         (DIST / "assets").mkdir(parents=True, exist_ok=True)
@@ -216,12 +255,54 @@ def _running_instances() -> list[str]:
     return [line for line in done.stdout.splitlines() if "LineupMaster.exe" in line]
 
 
+def release_files() -> list[Path]:
+    """ไฟล์ใน dist ที่ใส่ zip แจกเพื่อนได้ — ตัดคลังรูป หมุด สถิติ การล็อกอิน ถัง แคช หน้าสรุปตรวจ ทิ้ง."""
+    private = (set(USER_DATA) | {".cache"}) - RELEASE_KEEP
+    out = []
+    for path in sorted(DIST.rglob("*")):
+        if not path.is_file():
+            continue
+        parts = path.relative_to(DIST).parts
+        top = parts[1] if parts[0] == "data" and len(parts) > 1 else parts[0]
+        if top in private or "-review" in path.name:
+            continue
+        if path.suffix.lower() == ".lnk":     # ทางลัดรุ่นเก่าที่ค้าง — ชี้ที่อยู่บนเครื่องเรา
+            continue
+        out.append(path)
+    return out
+
+
+def make_release() -> int:
+    """zip แจกเพื่อน: เปิดได้เลย คลังว่าง ไม่มีข้อมูลส่วนตัวของเรา (ดู release_files)."""
+    import zipfile
+
+    if not (DIST / "LineupMaster.exe").is_file():
+        print("[x] ยังไม่มี exe ใน dist — บิ้วก่อน (python tools/build_exe.py) แล้วค่อย --release")
+        return 1
+    if not (DATA / "community.json").is_file():
+        print("[!] ยังไม่ได้ตั้งเซิร์ฟเวอร์คอมมูนิตี้ (community.json) — เพื่อนจะต้องกรอก URL/anon key เอง")
+    files = release_files()
+    RELEASE_ZIP.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(RELEASE_ZIP, "w", zipfile.ZIP_DEFLATED) as zf:
+        for path in files:
+            zf.write(path, Path("LineupMaster") / path.relative_to(DIST))
+        zf.writestr("LineupMaster/data/lineups/วางรูปไลน์อัพที่นี่.txt",
+                    "เอาไลน์อัพของเพื่อนเข้าคลังได้จากหน้าเว็บ แท็บ 'คอมมูนิตี้'")
+    print(f"  แพ็กแล้ว {len(files)} ไฟล์ → {RELEASE_ZIP}  ({RELEASE_ZIP.stat().st_size / 1e6:.0f} MB)")
+    print("  ส่ง zip นี้ให้เพื่อน: แตกไฟล์ → เปิด LineupMaster.exe → ล็อกอิน → คอมมูนิตี้")
+    return 0
+
+
 def main() -> int:
     _utf8_stdout()
     parser = argparse.ArgumentParser(description="บิ้ว LineupMaster เป็น exe")
     parser.add_argument("--with-data", action="store_true",
                         help="ก๊อปคลังรูป + หมุด + สถิติไปด้วย (ไฟล์ใหญ่)")
+    parser.add_argument("--release", action="store_true",
+                        help="ไม่บิ้วใหม่ — แพ็ก dist ที่บิ้วไว้แล้วเป็น zip แจกเพื่อน (ตัดข้อมูลส่วนตัวออก)")
     args = parser.parse_args()
+    if args.release:
+        return make_release()
 
     if not SPEC.is_file():
         print(f"ไม่เจอ {SPEC.name}")
@@ -239,6 +320,16 @@ def main() -> int:
     stashed = _stash_existing_data()
     if stashed:
         print(f"  พบข้อมูลเดิมใน dist อยู่แล้ว ({', '.join(stashed)}) — พักไว้ก่อนบิ้วใหม่ ไม่ให้หาย")
+
+    # ลบของเก่าที่เหลือ (exe/_internal/assets) เองก่อน แทนที่จะปล่อยให้ --clean ของ PyInstaller
+    # ลบ — ดู _force_rmtree ว่าทำไม (ReadOnly ที่ติดมาจาก assets/maps ทำให้มันพังกลางทางประจำ)
+    if not _force_rmtree(DIST):
+        print(f"[x] ลบ {DIST} เดิมไม่ได้ (ติดล็อกค้าง) — ปิดโปรแกรม/เครื่องมือ/หน้าต่าง Explorer/คอนโซล"
+              " ที่เปิดอยู่ในโฟลเดอร์นั้นแล้วลองใหม่")
+        conflicts = _restore_stashed_data(stashed)      # เอาข้อมูลที่พักไว้กลับเข้า data/ ก่อนจบเสมอ
+        if conflicts:
+            print(f"    [!] คืนข้อมูลไม่ได้บางส่วน ({', '.join(conflicts)}) — อยู่ที่ {STASH}")
+        return 1
 
     print("กำลังบิ้ว ... (ครั้งแรกนานหลายนาที Qt ไฟล์เยอะ)")
     done = subprocess.run(
@@ -282,13 +373,13 @@ def main() -> int:
             source = ROOT / name
             if source.is_dir():
                 print(f"  ก๊อป {name}/ ... (ใหญ่ ใจเย็นๆ)")
-                shutil.copytree(source, DIST / name, dirs_exist_ok=True)
+                shutil.copytree(source, DATA / name, dirs_exist_ok=True)
             elif source.is_file():
-                shutil.copy2(source, DIST / name)
+                shutil.copy2(source, DATA / name)
                 print(f"  ก๊อป {name}")
     elif not stashed:
         # ไม่เคยมีข้อมูลเดิมมาก่อนเลย (dist ใหม่เอี่ยม) — เตรียมโฟลเดอร์ lineups ว่างไว้ให้
-        (DIST / "lineups").mkdir(exist_ok=True)
+        (DATA / "lineups").mkdir(parents=True, exist_ok=True)
 
     make_shortcuts()
 
@@ -297,9 +388,7 @@ def main() -> int:
     print(f"  เสร็จแล้ว: {DIST}   ({_size(DIST)})")
     print("=" * 58)
     print()
-    print("  LineupMaster.exe          เปิดโปรแกรมหลัก")
-    for name, arg in SHORTCUTS:
-        print(f"  {name:<26}(= LineupMaster.exe {arg})")
+    print("  เปิด LineupMaster.exe — ทุกอย่างเข้าจากหน้าเข้าโปรแกรม")
     print()
     if stashed and not conflicts:
         print(f"  ข้อมูลเดิมที่มีอยู่แล้ว ({', '.join(stashed)}) ยังอยู่ครบ — บิ้วซ้ำแล้วไม่หาย")

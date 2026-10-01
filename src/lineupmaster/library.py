@@ -11,6 +11,9 @@
 ถ้าย้ายแค่ไฟล์รูปเฉยๆ หมุดกับสถิติที่สะสมไว้จะหลุดหายเงียบๆ โมดูลนี้จึงรวมทุกอย่างไว้
 ที่เดียว ห้ามย้ายไฟล์ตรงๆ จากที่อื่น
 
+รูปที่วาดทับในหน้าเว็บมีต้นฉบับเก็บไว้ที่ ``.originals/<rel>`` (ดู ``original_of``) — ผูกกับ rel
+เหมือนหมุด ย้าย/เปลี่ยนชื่อแล้วต้องตามไปด้วย (``migrate`` ทำให้)
+
 **ลบ = ย้ายเข้า ``.trash/`` ที่รากโปรเจกต์ ไม่ได้ลบทิ้งจริง** — ``.trash/`` อยู่นอก
 ``lineups/`` ตัวสแกนจึงมองไม่เห็น และถ้าลบผิดก็ลากกลับมาเองได้
 """
@@ -83,6 +86,24 @@ def unique_path(folder: Path, stem: str, suffix: str) -> Path:
     raise OSError(f"หาชื่อว่างให้ {stem} ไม่ได้")
 
 
+def original_of(root: Path, rel: str) -> Path:
+    """ที่เก็บรูปต้นฉบับก่อนวาดทับครั้งแรก — ไม่อยู่ใน ``.trash`` เพราะตัวรวมคลังจะนึกว่ารูปนี้ถูกลบ."""
+    return root / ".originals" / Path(*rel.split("/"))
+
+
+def _move_original(root: Path, old_rel: str, new_rel: str | None) -> None:
+    source = original_of(root, old_rel)
+    if not source.is_file():
+        return
+    if new_rel is None:                       # ลบรูป — ต้นฉบับตามเข้าถังด้วย (กู้คู่กันได้)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        target = root / ".trash" / f"{stamp}-original" / Path(*old_rel.split("/"))
+    else:
+        target = original_of(root, new_rel)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(source), target)
+
+
 # -- ข้อมูลพ่วงที่เป็น json ------------------------------------------------
 def _rekey(path: Path, old: str, new: str | None, section: str | None = None) -> None:
     """เปลี่ยนคีย์ (หรือลบถ้า new เป็น None) ใน json โดยไม่แตะฟิลด์อื่น.
@@ -109,6 +130,32 @@ def _rekey(path: Path, old: str, new: str | None, section: str | None = None) ->
         pass
 
 
+def _retarget_taken(path: Path, old: str, new: str | None) -> None:
+    """``browse.json`` เก็บ rel ไว้เป็น**ค่า** ({uid: rel}) ไม่ใช่คีย์ — ``_rekey`` เลยตามไม่ถึง.
+
+    ไม่ตาม = ลิงก์ "ใบนี้นำเข้าแล้ว" ของหน้านำเข้า/คัดใบซ้ำชี้ไปรูปที่ไม่มีแล้ว (ลบรูป = ตัดลิงก์ทิ้ง)
+    """
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    taken = data.get("taken") if isinstance(data, dict) else None
+    if not isinstance(taken, dict):
+        return
+    hits = [uid for uid, rel in taken.items() if rel == old]
+    if not hits:
+        return
+    for uid in hits:
+        if new is None:
+            del taken[uid]
+        else:
+            taken[uid] = new
+    try:
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    except OSError:
+        pass
+
+
 def migrate(root: Path, old_rel: str, new_rel: str | None, record: bool = True) -> None:
     """ย้ายหมุด/สถิติ/แท็กของไลน์อัพไปคีย์ใหม่ (new_rel = None คือลบทิ้ง).
 
@@ -121,6 +168,8 @@ def migrate(root: Path, old_rel: str, new_rel: str | None, record: bool = True) 
     _rekey(root / "positions.json", old_rel, new_rel)
     _rekey(root / "last-view.json", old_rel, new_rel, section="uses")
     _rekey(root / "meta.json", old_rel, new_rel)
+    _retarget_taken(root / "browse.json", old_rel, new_rel)
+    _move_original(root, old_rel, new_rel)
     if record:
         journal.record(root, old_rel, new_rel)
 

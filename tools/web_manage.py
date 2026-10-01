@@ -20,9 +20,13 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import mimetypes
+import os
+import re
 import secrets
+import shutil
 import socket
 import sys
 import threading
@@ -45,25 +49,46 @@ from lineupmaster import merge as merge_mod  # noqa: E402
 from lineupmaster import meta as meta_mod  # noqa: E402
 from lineupmaster import positions as pos_mod  # noqa: E402
 from lineupmaster import settings as settings_mod  # noqa: E402
+from lineupmaster import shrink as shrink_mod  # noqa: E402
+from lineupmaster import voice as voice_mod  # noqa: E402
+from lineupmaster import clipgrab  # noqa: E402
 from lineupmaster.browser import ABILITY_TH, AGENT_ABILITIES, AGENT_TH, SIDES, SITES  # noqa: E402
 from lineupmaster.index import IMAGE_SUFFIXES  # noqa: E402
+from lineupmaster import paths as paths_mod  # noqa: E402
 from lineupmaster.paths import ASSETS, MAPS, ROOT  # noqa: E402
 # ตัวโหลดไลน์อัพจากเว็บอยู่ที่ lineup_sources.py — ใช้ร่วมกับเครื่องมือ Qt เดิม สูตร URL,
 # การจับคู่ชื่อสกิล และไฟล์จำว่าเอา/ไม่เอาใบไหน จึงเป็นชุดเดียวกันทั้งสองหน้า ไม่ต้องดูแลสองที่
 import lineup_sources as source_mod  # noqa: E402
+from community_web import CommunityWeb  # noqa: E402
+from lineupmaster.community import CommunityError, NotLoggedIn  # noqa: E402
 import route_pins  # noqa: E402
 
 # Windows ไม่รู้จักนามสกุลฟอนต์เว็บ ต้องบอกเอง ไม่งั้นเสิร์ฟเป็น octet-stream
 mimetypes.add_type("font/woff2", ".woff2")
 
 WEB_DIR = ASSETS / "web"
+
+
+def _voice_cache() -> Path:
+    """ไฟล์เสียงพูด (voice.py) — ที่เดียวกับที่โปรแกรมหลักเปิดเล่น."""
+    return ROOT / ".cache" / "voice"
 THUMBS = ROOT / ".cache" / "thumbs"
 SRC_THUMBS = ROOT / ".cache" / "source-thumbs"
 THUMB_WIDTH = 420
 SRC_THUMB_WIDTH = 360
 
 HOST = "127.0.0.1"          # เปิดให้เฉพาะเครื่องตัวเอง ไม่รับจากเครื่องอื่นในวง LAN เด็ดขาด
+# Windows บางเครื่องไม่รู้จัก .webp ใน registry → mimetypes เดาไม่ออกแล้วตกไปเป็น image/png
+# (รูปในคลังเป็น .webp หลังกด "ย่อขนาดรูปทั้งคลัง")
+mimetypes.add_type("image/webp", ".webp")
 PORT_RANGE = range(8760, 8800)
+
+
+def _mtime(path: Path) -> float | None:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return None
 
 
 class Store:
@@ -84,9 +109,20 @@ class Store:
 
     def reload(self) -> None:
         self.positions = pos_mod.load(ROOT / "positions.json")
-        self.meta = meta_mod.load(ROOT / "meta.json")
         self.lineups = index_mod.scan(self.cfg.lineups_dir, self.cfg.aliases)
+        self.fresh_meta()
+
+    def fresh_meta(self) -> dict:
+        """อ่าน meta.json สดจากดิสก์ก่อนแก้ทุกครั้ง (อ่าน→แก้→เขียน).
+
+        โปรแกรมหลักเขียนไฟล์นี้เองระหว่างเล่น (F8 แจ้งผิด, นับซ้อม) และ library.move/rename ก็
+        ย้ายคีย์บนดิสก์ตรงๆ — ถ้าเขียนจากก๊อปในหน่วยความจำที่อ่านไว้นานแล้ว ธงที่เพิ่งกดจะหาย
+        หรือคีย์ชื่อเก่าที่เพิ่งย้ายไปจะโผล่กลับมา
+        """
+        self.meta = meta_mod.load(ROOT / "meta.json")
+        self._meta_stamp = _mtime(ROOT / "meta.json")
         meta_mod.apply(self.meta, self.lineups)
+        return self.meta
 
     def find(self, rel: str):
         return next((lu for lu in self.lineups if lu.rel == rel), None)
@@ -105,8 +141,15 @@ class Store:
             "fav": bool(lu.fav),
             "tags": list(lu.tags),
             "drilled": int(lu.drilled),
+            "flag": bool(lu.flag),
+            "hasOriginal": lib.original_of(ROOT, lu.rel).is_file(),
+            # เลขเวอร์ชันของไฟล์รูป — ต่อท้าย URL รูปให้เบราว์เซอร์โหลดใหม่หลังวาดทับ (รูปแคชไว้ 1 วัน)
+            "v": int(_mtime(lu.path) or 0),
             "note": lu.note or "",
+            "howto": lu.howto or "",
+            "howtoAi": bool(lu.howto_ai),
             "gif": lu.gif is not None,
+            "animated": bool(lu.animated),
             "pin": {
                 "from": pos_mod.point_of(entry, "from"),
                 "to": pos_mod.point_of(entry, "to"),
@@ -114,6 +157,9 @@ class Store:
         }
 
     def state(self) -> dict:
+        # สแกนดิสก์ใหม่ทุกครั้ง: รูปที่ลากวางเข้าโฟลเดอร์คลังตรงๆ ต้องขึ้น "ยังไม่ปักหมุด" ทันที
+        # และธงที่เพิ่งกด F8 ในเกมต้องเห็นหลังรีเฟรช (คลังหลายร้อยใบใช้ ~0.2 วินาที)
+        self.reload()
         maps = sorted(self.cfg.aliases.get("maps") or {})
         agents = sorted(self.cfg.aliases.get("agents") or {}) or ["sova"]
         items = [self.as_json(lu) for lu in self.lineups]
@@ -127,7 +173,8 @@ class Store:
             "agentAbilities": AGENT_ABILITIES,
             "tags": sorted({t for lu in self.lineups for t in lu.tags}),
             "mapsWithImage": sorted(p.stem for p in MAPS.glob("*.png")),
-            "unpinned": sum(1 for lu in self.lineups if lu.rel not in self.positions),
+            # "ยังไม่ปักหมุด" รวมใบที่ยังไม่ได้ตั้งสกิลด้วย — ต้องกลับไปเติมให้ครบเหมือนกัน
+            "unpinned": sum(1 for lu in self.lineups if lu.rel not in self.positions or not lu.ability),
         }
 
     def map_extras(self, map_: str, side: str | None) -> dict:
@@ -135,7 +182,14 @@ class Store:
         group = [lu for lu in self.lineups if lu.map == map_ and (not side or lu.side == side)]
         labels = pos_mod.site_labels(map_, group, self.positions)
         data = callout_mod.load(ROOT / "callouts.json")
+        # จุดเกิดสองฝั่ง — หน้าเว็บใช้หมุนแมพให้จุดเกิดฝั่งเราอยู่ล่างจอ (เหมือนมินิแมพในเกม)
+        entries = data.get(map_, {})
+        spawns = {side: list(entries[slug]["xy"])
+                  for side, slug in (("attack", "spawn-attacker-side"),
+                                     ("defense", "spawn-defender-side"))
+                  if entries.get(slug, {}).get("xy") is not None}
         return {
+            "spawns": spawns,
             "labels": {site: {"xy": list(xy), "manual": manual}
                        for site, (xy, manual) in labels.items()},
             "callouts": [{"label": label, "xy": list(xy)}
@@ -176,15 +230,80 @@ class Store:
             changes.append("แก้โน้ต")
 
         rel = lib.rel_of(self.cfg.lineups_dir, path)
+        self.fresh_meta()
         before = dict(meta_mod.entry(self.meta, rel))
-        meta_mod.set_fields(self.meta, rel, ability=body.get("ability") or None,
-                            fav=bool(body.get("fav")), tags=body.get("tags") or [])
+        fields = {"ability": body.get("ability") or None, "fav": bool(body.get("fav")),
+                  "tags": body.get("tags") or []}
+        if "flag" in body:                  # ฟอร์มเก่าที่ไม่ส่ง flag มา = ไม่แตะธง
+            fields["flag"] = bool(body["flag"])
+        if "howto" in body:                 # วิธียิงที่เสียงอ่าน — แก้เอง/กดยืนยัน = ไม่ใช่ร่าง AI แล้ว
+            howto = str(body.get("howto") or "").strip()
+            fields["howto"] = howto
+            fields["howto_ai"] = bool(howto) and bool(body.get("howtoAi"))
+        meta_mod.set_fields(self.meta, rel, **fields)
         if meta_mod.entry(self.meta, rel) != before:
             meta_mod.save(ROOT / "meta.json", self.meta)
-            changes.append("แก้สกิล/ไม้ตาย/แท็ก")
+            if bool(before.get("flag")) != bool(meta_mod.entry(self.meta, rel).get("flag")):
+                changes.append("⚑ ต้องแก้" if fields.get("flag") else "เอาธง ⚑ ออก")
+            if {k: v for k, v in before.items() if k != "flag"} !=                     {k: v for k, v in meta_mod.entry(self.meta, rel).items() if k != "flag"}:
+                changes.append("แก้สกิล/ไม้ตาย/แท็ก")
 
         self.reload()
         return {"rel": rel, "changes": changes or ["ไม่มีอะไรเปลี่ยน"]}
+
+    def save_drawing(self, rel: str, data_url: str) -> dict:
+        """เขียนรูปที่วาดทับจากหน้าเว็บลงไฟล์จริง — สำรองต้นฉบับไว้ที่ ``.originals/<rel>`` ครั้งแรกครั้งเดียว.
+
+        วาดซ้ำหลายรอบต้นฉบับยังเป็นรูปก่อนวาดครั้งแรกสุด (กด "กลับเป็นรูปเดิม" ได้เสมอ)
+        rel ไม่เปลี่ยน หมุด/แท็กอยู่ครบ · jpg/webp ยังเป็นนามสกุลเดิม (ไม่งั้นต้องเปลี่ยนนามสกุล = เปลี่ยน rel)
+        """
+        from PySide6.QtGui import QImage
+
+        lu = self.find(rel)
+        if lu is None:
+            raise KeyError("ไม่เจอไลน์อัพใบนี้ (อาจถูกลบ/ย้ายไปแล้ว — กด refresh)")
+        suffix = lu.path.suffix.lower()
+        if suffix not in (".png", ".jpg", ".jpeg", ".webp") or lu.animated:
+            raise ValueError("วาดทับได้เฉพาะรูปนิ่ง (ภาพเคลื่อนไหววาดทับไม่ได้)")
+        head, _, payload = str(data_url or "").partition(",")
+        if not head.startswith("data:image/png;base64"):
+            raise ValueError("ข้อมูลรูปที่ส่งมาไม่ใช่ PNG")
+        raw = base64.b64decode(payload)
+        image = QImage()
+        if not image.loadFromData(raw, "PNG"):
+            raise ValueError("อ่านรูปที่วาดไม่ออก")
+
+        original = lib.original_of(ROOT, rel)
+        if not original.is_file():
+            original.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(lu.path, original)
+        temp = lu.path.with_name(lu.path.name + ".drawing.tmp")
+        if suffix == ".png":
+            temp.write_bytes(raw)
+        elif suffix == ".webp":
+            if not image.save(str(temp), "WEBP", shrink_mod.QUALITY):
+                raise OSError("เซฟรูป webp ไม่สำเร็จ")
+        elif not image.save(str(temp), "JPG", 95):
+            raise OSError("เซฟรูป jpg ไม่สำเร็จ")
+        os.replace(temp, lu.path)             # ไม่มีจังหวะที่ไฟล์หายหรือครึ่งๆ กลางๆ
+        self.reload()
+        return {"rel": rel, "message": "บันทึกที่วาดลงรูปแล้ว (รูปเดิมสำรองไว้ กด 'กลับเป็นรูปเดิม' ได้)"}
+
+    def revert_drawing(self, rel: str) -> dict:
+        """เอารูปก่อนวาดกลับมา — รูปที่วาดแล้วย้ายเข้า ``.trash/<เวลา>-drawn/`` (ไม่ลบทิ้ง)."""
+        lu = self.find(rel)
+        if lu is None:
+            raise KeyError("ไม่เจอไลน์อัพใบนี้")
+        original = lib.original_of(ROOT, rel)
+        if not original.is_file():
+            raise ValueError("ใบนี้ไม่มีรูปเดิมสำรองไว้ (ยังไม่เคยวาดทับ)")
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        bin_path = ROOT / ".trash" / f"{stamp}-drawn" / Path(*rel.split("/"))
+        bin_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(lu.path), bin_path)
+        shutil.move(str(original), lu.path)
+        self.reload()
+        return {"rel": rel, "message": "กลับเป็นรูปเดิมแล้ว (รูปที่วาดไว้อยู่ใน .trash)"}
 
     def delete(self, rel: str) -> dict:
         lu = self.find(rel)
@@ -194,6 +313,42 @@ class Store:
         result = lib.remove(ROOT, self.cfg.lineups_dir, lu.path)
         self.reload()
         return {"message": result.message, "extras": extras}
+
+    # -- ย่อขนาดรูปทั้งคลัง (ดู lineupmaster/shrink.py) ------------------------
+    def shrink_candidates(self) -> dict:
+        """รูปที่ยังย่อได้ + ขนาดรวมตอนนี้ — หน้าเว็บวนส่งทีละ rel มาที่ shrink()."""
+        lineups_dir = self.cfg.lineups_dir
+        paths = [p for p in shrink_mod.candidates(lineups_dir)
+                 if self.find(lib.rel_of(lineups_dir, p)) is not None]
+        return {"rels": [lib.rel_of(lineups_dir, p) for p in paths],
+                "bytes": sum(p.stat().st_size for p in paths)}
+
+    def shrink(self, rel: str) -> dict:
+        """ย่อทีละใบ — ทีละใบเพื่อให้หน้าเว็บโชว์ความคืบหน้าและกดหยุดกลางทางได้."""
+        lu = self.find(rel)
+        if lu is None:
+            raise KeyError("ไม่เจอไลน์อัพใบนี้ (อาจถูกลบ/ย้ายไปแล้ว)")
+        done = shrink_mod.shrink_one(ROOT, self.cfg.lineups_dir, lu.path)
+        if not done.skipped:
+            self.reload()
+        return {"rel": lib.rel_of(self.cfg.lineups_dir, done.path), "skipped": done.skipped,
+                "oldBytes": done.old_bytes, "newBytes": done.new_bytes}
+
+    # -- เสียงพูด (ดู lineupmaster/voice.py) ------------------------------------
+    def voice_options(self) -> dict:
+        """ค่าเสียงที่ใช้อยู่จริง (อ่าน config สด — เพิ่งปรับความเร็วในหน้าตั้งค่าต้องเห็นเลย)."""
+        return {**voice_mod.DEFAULTS, **(config_mod.load(ROOT).raw.get("voice") or {})}
+
+    def voice_candidates(self) -> dict:
+        """ประโยคที่ยังไม่มีไฟล์เสียง — หน้าเว็บวนส่งทีละประโยคไปที่ /api/voice/make."""
+        options = self.voice_options()
+        rate = int(options["rate"])
+        texts = voice_mod.phrases(self.lineups, ABILITY_TH, bool(options["notes"]))
+        # ลบเสียงของใบที่ลบ/เปลี่ยนชื่อไปแล้ว และของความเร็วเก่า — ทุกครั้งที่เปิดหน้าตั้งค่า
+        pruned, freed = voice_mod.prune(_voice_cache(), rate, texts)
+        missing = [text for text in texts
+                   if not voice_mod.clip_path(_voice_cache(), text, rate).is_file()]
+        return {"total": len(texts), "missing": missing, "pruned": pruned, "freed": freed}
 
     def set_pin(self, rel: str, src, dst) -> dict:
         if self.find(rel) is None:
@@ -249,7 +404,6 @@ class Store:
         """สั่งเหมาหลายใบพร้อมกัน — ทำทีละใบผ่านทางเดิม ไม่มีทางลัดที่ข้ามของพ่วง."""
         rels = list(body.get("rels") or [])
         done = 0
-        meta_touched = False
         for rel in rels:
             lu = self.find(rel)
             if lu is None:
@@ -270,11 +424,10 @@ class Store:
             if "tags" in body:
                 fields["tags"] = body["tags"] or []
             if fields:
-                meta_mod.set_fields(self.meta, new_rel, **fields)
-                meta_touched = True
+                # อ่านสดทุกใบ — lib.move ข้างบนเพิ่งย้ายคีย์ใน meta.json บนดิสก์ไปแล้ว
+                meta_mod.set_fields(self.fresh_meta(), new_rel, **fields)
+                meta_mod.save(ROOT / "meta.json", self.meta)
             done += 1
-        if meta_touched:
-            meta_mod.save(ROOT / "meta.json", self.meta)
         self.reload()
         return {"done": done}
 
@@ -286,7 +439,7 @@ class Store:
         """
         if roots is None:
             home = Path.home()
-            roots = [ROOT.parent, home / "Desktop", home / "Downloads", home / "Documents",
+            roots = [paths_mod.APP.parent, home / "Desktop", home / "Downloads", home / "Documents",
                      home / "OneDrive" / "Desktop"]
         return {"folders": merge_mod.find_candidates(roots, exclude=ROOT)}
 
@@ -378,6 +531,7 @@ class Store:
         drop = set(curate_mod.drops(curate_mod.groups(entries, singles=True),
                                     self.curate_decisions(agent)))
         tagged = 0
+        self.fresh_meta()
         for item in entries:
             lu = self.find(item["rel"])
             if item["rel"] in drop or lu is None or lu.ability or item["ability"] not in ABILITY_TH:
@@ -452,6 +606,9 @@ class SourceBrowser:
         # จะถูกโหลดซ้ำซ้อนหลายเธรดพร้อมกัน (เปลืองทั้งเน็ตของเราและของเว็บเขา)
         self._busy: dict[str, threading.Lock] = {}
         self._callout_stamp: float = -1.0
+        # ไลน์อัพจากคลิป YouTube (clipgrab.py) — ไม่ได้อยู่ในแคตตาล็อกของเว็บ เก็บแยกไว้ตรงนี้
+        # uid "yt:<วิดีโอ>-<วินาทีเริ่ม>" · ใช้ท่อเดียวกับใบจากเว็บ: จัดหน้า → ปักหมุด → take()
+        self._clips: dict[str, tuple[dict, clipgrab.Clip]] = {}
 
     def catalog(self, force: bool = False) -> list[dict]:
         with self.lock:
@@ -475,6 +632,7 @@ class SourceBrowser:
         index = {m: route_pins.index_of(data, m) for m in {e["m"] for e in self._catalog}}
         for entry in self._catalog:
             pin = {}
+            start = end = None
             if entry.get("from") or entry.get("to"):
                 lookup = index.get(entry["m"]) or []
                 start = route_pins.match(entry.get("from"), lookup)
@@ -482,13 +640,106 @@ class SourceBrowser:
                 # ไม่มีจุดยืนก็เก็บหมุดไม่ได้เลย (positions.json ต้องมี from เสมอ)
                 pin = {"from": start, "to": end} if start else {}
             entry["pin"] = route_pins.pin_state(pin)
+            # พิกัดบนแผนที่ + แท็กสกิลของเรา — หน้า "หาไลน์อัพเพิ่ม" (coverage.js) วางใบจากเว็บลงโซนด้วยนี่
+            entry["fxy"] = list(start) if start else None
+            entry["txy"] = list(end) if end else None
+            entry["tag"] = source_mod.ability_tag(entry.get("ab")) or ""
         self._callout_stamp = stamp
 
     def decisions(self) -> dict:
         return source_mod.read_decisions()
 
     def find(self, uid: str) -> dict | None:
+        if uid in self._clips:
+            return self._clips[uid][0]
         return next((l for l in self.catalog() if l["uid"] == uid), None)
+
+    # -- คลิป YouTube ------------------------------------------------------
+    def clip_load(self, link: str, aliases: dict) -> dict:
+        """ลิงก์คลิป → รายการใบเสมือน (ไม่มีขั้นจนกว่าผู้ใช้จะเลือกเฟรม) + เฟรมทั้งหมดของท่านั้น."""
+        clip = clipgrab.load(link, ROOT, aliases)
+        entry = self._clip_entry(clip)
+        return {"entry": entry, "times": clip.times, "subs": clip.subs}
+
+    def _clip_entry(self, clip: clipgrab.Clip, video: bool = False) -> dict:
+        """ใบเสมือนของคลิปนี้ (หน้าตาเหมือนใบจากเว็บ) แล้วจำไว้ใน ``_clips``."""
+        uid = f"yt:{clip.vid}-{int(clip.start)}"
+        text = f"{clip.chapter} {clip.title}"
+        entry = {
+            "uid": uid, "src": "yt", "i": uid, "t": clip.name, "m": clip.map or "",
+            "a": clip.agent or "sova", "side": clip.side or "attack", "st": (clip.site or "").upper(),
+            "ab": source_mod.ability_tag(text) or "", "n": 0, "from": None, "to": None,
+            "d": f"{clip.title} · {int(clip.start) // 60}:{int(clip.start) % 60:02d}"
+                 f"–{int(clip.end) // 60}:{int(clip.end) % 60:02d}",
+            "video": video,
+        }
+        self._clips[uid] = (entry, clip)
+        return entry
+
+    # -- หน้าทำวิดีโอ --------------------------------------------------------
+    def video_open(self, link: str, aliases: dict) -> dict:
+        """ลิงก์คลิป → โหลดช่วงของท่านั้นมาไว้ในเครื่อง (proxy.mp4) + ข้อมูลที่หน้าทำวิดีโอต้องใช้."""
+        clip = clipgrab.open_video(link, ROOT, aliases)
+        entry = self._clip_entry(clip, video=True)
+        return {
+            "entry": entry, "start": clip.start, "end": clip.end,
+            "offset": clip.proxy_offset, "fps": clip.fps, "max": clipgrab.GIF_MAX,
+            "motion": {"times": clip.motion_times, "values": clip.motion},
+            "plan": clipgrab.video_plan(clip),
+            "suggest": clipgrab.suggest_plan(clip.coarse_times, clip.coarse, clip.start, clip.end),
+            "subs": clip.subs,
+        }
+
+    def video_file(self, uid: str) -> Path | None:
+        found = self._clips.get(uid)
+        if found is None:
+            return None
+        path = clipgrab.proxy_path(found[1])
+        return path if path.is_file() else None
+
+    def video_render(self, uid: str, plan: dict) -> Path:
+        """ทำภาพเคลื่อนไหวตามแผน แล้วจดแผนไว้ใน clip.json — ห้ามเรียกใต้ล็อก Store (ใช้หลายวินาที)."""
+        found = self._clips.get(uid)
+        if found is None:
+            raise KeyError("ไม่เจอคลิปนี้ — วางลิงก์เปิดใหม่อีกครั้ง")
+        clip = found[1]
+        path = clipgrab.render(clip, plan)
+        clip.plan = clipgrab.clean_plan(plan)
+        clipgrab.save_clip(clip)
+        return path
+
+    def clip_gif(self, uid: str, start, end) -> Path:
+        """GIF ช่วงยิงของใบคลิป (ทำครั้งเดียว เก็บในโฟลเดอร์คลิป) — ต่อเน็ต ห้ามเรียกใต้ล็อก Store."""
+        found = self._clips.get(uid)
+        if found is None:
+            raise KeyError("ไม่เจอคลิปนี้ — กดดึงเฟรมใหม่อีกครั้ง")
+        return clipgrab.make_gif(found[1], float(start), float(end))
+
+    def clip_suggest(self, uid: str) -> dict:
+        found = self._clips.get(uid)
+        if found is None:
+            raise KeyError("ไม่เจอคลิปนี้ — กดดึงเฟรมใหม่อีกครั้ง")
+        guess = clipgrab.suggest_gif(found[1])
+        return {"start": guess[0], "end": guess[1]} if guess else {}
+
+    def clip_file(self, uid: str, name: str) -> Path | None:
+        found = self._clips.get(uid)
+        if found is None or not re.fullmatch(r"anim-[\d.]+-[\d.]+-\d+fps-q\d+\.webp", name):
+            return None
+        path = Path(found[1].folder) / name
+        return path if path.is_file() else None
+
+    def clip_frame(self, uid: str, index: int, small: bool) -> Path | None:
+        found = self._clips.get(uid)
+        if found is None or not (0 <= index < len(found[1].frames)):
+            return None
+        path = found[1].paths()[index]
+        if not small:
+            return path
+        thumb = path.with_name(path.stem + ".s.jpg")        # รูปย่อไว้ในแถบเฟรม
+        if not thumb.is_file() and not _shrink(path.read_bytes(), thumb, 320):
+            return path
+        return thumb
 
     def _entry(self, uid) -> dict:
         entry = self.find(str(uid))
@@ -569,12 +820,18 @@ class SourceBrowser:
         if map_ not in set(store.cfg.aliases.get("maps") or {}):
             raise ValueError(f"แมพ {map_} ไม่มีในคลังเรา เก็บใบนี้ไม่ได้")
 
-        raw = base64.b64decode(str(body.get("data") or "").split(",")[-1])
-        if not raw:
-            raise ValueError("ไม่มีข้อมูลรูปที่จัดหน้าแล้วส่งมา")
-        temp = ROOT / ".cache" / "source-take.png"
-        temp.parent.mkdir(parents=True, exist_ok=True)
-        temp.write_bytes(raw)
+        # "เก็บแค่ภาพเคลื่อนไหว" (ใบจากคลิป) — ตัวไลน์อัพคือไฟล์ WebP เคลื่อนไหวเลย ไม่มีรูปนิ่ง
+        anim_only = bool(body.get("animOnly")) and bool(body.get("_gifpath"))
+        if anim_only:
+            temp = ROOT / ".cache" / "source-take.webp"
+            shutil.copy2(body["_gifpath"], temp)
+        else:
+            raw = base64.b64decode(str(body.get("data") or "").split(",")[-1])
+            if not raw:
+                raise ValueError("ไม่มีข้อมูลรูปที่จัดหน้าแล้วส่งมา")
+            temp = ROOT / ".cache" / "source-take.png"
+            temp.parent.mkdir(parents=True, exist_ok=True)
+            temp.write_bytes(raw)
 
         site = str(body.get("site") or entry["st"] or "a").lower()
         result = lib.add(
@@ -590,8 +847,9 @@ class SourceBrowser:
         store.reload()
 
         tag = body.get("ability") or source_mod.ability_tag(entry.get("ab"))
-        if tag:
-            meta_mod.set_fields(store.meta, rel, ability=tag)
+        howto = str(body.get("howto") or "").strip()
+        if tag or howto:
+            meta_mod.set_fields(store.meta, rel, ability=tag, howto=howto)
             meta_mod.save(ROOT / "meta.json", store.meta)
 
         # จิ้มหมุดมาจากหน้าเว็บด้วยเลยก็ได้ — ไม่ได้จิ้มมาก็ลองเดาจากชื่อโซนที่เว็บต้นทางบอก
@@ -604,6 +862,12 @@ class SourceBrowser:
         if pin.get("from"):
             store.set_pin(rel, pin["from"], pin.get("to"))
             state = "full" if pin.get("to") else "half"
+
+        # GIF ช่วงยิงจากคลิป (ทำไว้แล้วก่อนเข้าล็อก ดู do_POST) — วางคู่รูปชื่อเดียวกัน ในเกมกด numpad * ดู
+        gif = body.get("_gifpath")
+        if gif and Path(gif).is_file() and not anim_only:
+            shutil.copy2(gif, result.path.with_suffix(".gif"))
+            store.reload()
 
         data = self.decisions()
         data["taken"][entry["uid"]] = rel
@@ -636,7 +900,10 @@ def thumb_for(store: Store, rel: str) -> Path | None:
     if lu is None or not lu.path.is_file():
         return None
     stamp = int(lu.path.stat().st_mtime)
-    target = THUMBS / f"{abs(hash(rel)) % (10 ** 12)}-{stamp}.jpg"
+    # sha1 ไม่ใช่ hash() — hash() ของ Python สุ่มใหม่ทุกครั้งที่เปิดโปรแกรม แคชเลยใช้ข้ามรอบไม่ได้
+    # เปิดหน้าเว็บทีไรย่อรูปใหม่ทั้งคลัง การ์ดดำเป็นนาทีจนดูเหมือนคลังว่าง (ผู้ใช้เจอจริง)
+    key = hashlib.sha1(rel.encode("utf-8")).hexdigest()[:16]
+    target = THUMBS / f"{key}-{stamp}.jpg"
     if target.is_file():
         return target
 
@@ -654,10 +921,12 @@ def thumb_for(store: Store, rel: str) -> Path | None:
 class Handler(BaseHTTPRequestHandler):
     server_version = "LineupMasterWeb"
 
-    def __init__(self, *args, store: Store, source: SourceBrowser, token: str, **kwargs) -> None:
+    def __init__(self, *args, store: Store, source: SourceBrowser, token: str,
+                 community: CommunityWeb | None = None, **kwargs) -> None:
         self.store = store
         self.source = source
         self.token = token
+        self.community = community or CommunityWeb(store, ROOT)
         super().__init__(*args, **kwargs)
 
     # -- ตัวช่วยตอบกลับ ---------------------------------------------------
@@ -669,6 +938,49 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
+
+    def _send_file(self, path: Path, ctype: str) -> None:
+        """ส่งไฟล์แบบขอทีละส่วนได้ (Range → 206) — ``<video>`` ต้องใช้ ไม่งั้นกระโดดไปเวลาอื่นไม่ได้."""
+        size = path.stat().st_size
+        wanted = self.headers.get("Range", "")
+        found = re.fullmatch(r"bytes=(\d*)-(\d*)", wanted.strip())
+        if not found or not (found.group(1) or found.group(2)):
+            self.send_response(200)
+            first, last = 0, size - 1
+        else:
+            if found.group(1):
+                first = int(found.group(1))
+                last = min(int(found.group(2)), size - 1) if found.group(2) else size - 1
+            else:                                          # bytes=-500 = 500 ไบต์สุดท้าย
+                first, last = max(0, size - int(found.group(2))), size - 1
+            if first >= size or first > last:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            self.send_response(206)
+            self.send_header("Content-Range", f"bytes {first}-{last}/{size}")
+        length = last - first + 1
+        self.send_header("Content-Type", ctype)
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(length))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if self.command == "HEAD":
+            return
+        with path.open("rb") as handle:
+            handle.seek(first)
+            left = length
+            while left > 0:
+                chunk = handle.read(min(left, 1 << 20))
+                if not chunk:
+                    break
+                try:
+                    self.wfile.write(chunk)
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                    return                                 # เบราว์เซอร์เลิกขอกลางทาง (กระโดดเวลา) — ปกติ
+                left -= len(chunk)
 
     def _json(self, data, code: int = 200) -> None:
         self._send(code, json.dumps(data, ensure_ascii=False).encode("utf-8"),
@@ -697,6 +1009,64 @@ class Handler(BaseHTTPRequestHandler):
         route = parsed.path
         query = parse_qs(parsed.query)
 
+        if route == "/community/callback":
+            # Supabase เด้งกลับมาหลังกดยืนยันใน Discord — ?t= ติดมากับ redirect_to ที่เราส่งไปเอง
+            if not self._guard(query):
+                return
+            try:
+                self.community.finish_login((query.get("code") or [""])[0])
+                note = "ล็อกอินแล้ว"
+            except CommunityError as error:
+                note = f"ล็อกอินไม่สำเร็จ: {error}"
+            target = f"/?t={self.token}#community"
+            body = (f"<meta charset='utf-8'><meta http-equiv='refresh' content='1;url={target}'>"
+                    f"<p style='font:16px sans-serif'>{note} — กำลังกลับไปหน้าคอมมูนิตี้…</p>")
+            self._send(200, body.encode("utf-8"), "text/html; charset=utf-8")
+            return
+
+        if route.startswith("/api/community/"):
+            if self._guard(query):
+                self._community(route, query, {})
+            return
+
+        if route == "/api/video/file":
+            if self._guard(query):
+                path = self.source.video_file((query.get("uid") or [""])[0])
+                if path is None:
+                    self._fail("ไม่มีคลิปนี้ในเครื่อง — วางลิงก์เปิดใหม่อีกครั้ง", 404)
+                else:
+                    self._send_file(path, "video/mp4")
+            return
+        if route == "/api/clip/suggest":
+            if self._guard(query):
+                try:
+                    self._json(self.source.clip_suggest((query.get("uid") or [""])[0]))
+                except KeyError as error:
+                    self._fail(error, 404)
+            return
+        if route == "/api/clip/file":
+            if self._guard(query):
+                path = self.source.clip_file((query.get("uid") or [""])[0], (query.get("name") or [""])[0])
+                if path is None:
+                    self._fail("ไม่เจอไฟล์นี้", 404)
+                else:
+                    self._send(200, path.read_bytes(), "image/webp", cache=True)
+            return
+        if route == "/api/clip/frame":
+            if self._guard(query):
+                path = self.source.clip_frame((query.get("uid") or [""])[0], int((query.get("i") or ["0"])[0]),
+                                              (query.get("s") or [""])[0] == "1")
+                if path is None:
+                    self._fail("ไม่เจอเฟรมนี้ (โหลดคลิปใหม่อีกครั้ง)", 404)
+                else:
+                    self._send(200, path.read_bytes(), "image/jpeg", cache=True)
+            return
+
+        if route == "/api/voice/sample":
+            if self._guard(query):
+                self._voice_sample()
+            return
+
         if route.startswith("/api/"):
             if not self._guard(query):
                 return
@@ -721,12 +1091,138 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             self._fail("ข้อมูลที่ส่งมาไม่ใช่ JSON")
             return
+        if parsed.path.startswith("/api/community/"):
+            self._community(parsed.path, query, body)     # ต่อเน็ต — ห้ามถือล็อกของ Store ไว้รอ
+            return
+        if parsed.path == "/api/clip/gif":              # ต่อเน็ต + ทำ GIF ~5 วิ — ไม่ถือล็อก
+            try:
+                path = self.source.clip_gif(str(body.get("uid") or ""), body.get("start"), body.get("end"))
+                self._json({"name": path.name, "kb": path.stat().st_size // 1024})
+            except KeyError as error:
+                self._fail(error, 404)
+            except (ValueError, OSError, TypeError) as error:
+                self._fail(error)
+            return
+        if parsed.path == "/api/source/take" and isinstance(body.get("gif"), dict):
+            try:                                        # ทำ GIF ให้เสร็จก่อนเข้าล็อก (ต่อเน็ตได้หลายวินาที)
+                gif = body["gif"]
+                body["_gifpath"] = str(self.source.clip_gif(str(body.get("uid") or ""), gif.get("start"), gif.get("end")))
+            except (KeyError, ValueError, OSError, TypeError) as error:
+                self._fail(f"ทำ GIF ไม่สำเร็จ: {error}")
+                return
+        if parsed.path == "/api/source/take" and isinstance(body.get("plan"), dict):
+            try:                                        # ทำภาพเคลื่อนไหวตามแผนก่อนเข้าล็อก (~3 วิ)
+                body["_gifpath"] = str(self.source.video_render(str(body.get("uid") or ""), body["plan"]))
+                body["animOnly"] = True
+            except KeyError as error:
+                self._fail(error, 404)
+                return
+            except (ValueError, OSError, TypeError) as error:
+                self._fail(f"ทำภาพเคลื่อนไหวไม่สำเร็จ: {error}")
+                return
+        if parsed.path == "/api/video/open":            # ต่อเน็ต + โหลดคลิป ~10 วิ — ไม่ถือล็อก
+            try:
+                self._json(self.source.video_open(str(body.get("link") or ""), self.store.cfg.aliases))
+            except (ValueError, OSError) as error:
+                self._fail(error)
+            return
+        if parsed.path == "/api/clip/load":             # ต่อเน็ต + ถอดวิดีโอ ~20 วิ — ไม่ถือล็อก
+            try:
+                self._json(self.source.clip_load(str(body.get("link") or ""), self.store.cfg.aliases))
+            except (ValueError, OSError) as error:
+                self._fail(error)
+            return
+        if parsed.path == "/api/voice/preview":
+            self._voice_preview(str(body.get("rel") or ""), body.get("howto"))
+            return
+        if parsed.path == "/api/voice/make":
+            self._voice_make(str(body.get("text") or ""))  # ต่อเน็ตเหมือนกัน — ไม่ถือล็อก
+            return
         try:
             with self.store.lock:
                 self._api_post(parsed.path, body)
         except KeyError as error:
             self._fail(error, 404)
         except (ValueError, OSError) as error:
+            self._fail(error)
+
+    # -- เสียงพูด: สร้างไฟล์ผ่านเน็ต จึงไม่ถือล็อกของ Store ไว้ระหว่างรอ -------------
+    def _voice_make(self, text: str) -> None:
+        if not text.strip():
+            self._fail("ไม่มีข้อความ")
+            return
+        rate = int(self.store.voice_options()["rate"])
+        text = text.strip()
+        path = voice_mod.clip_path(_voice_cache(), text, rate)
+        if path.is_file() or voice_mod.synthesize(text, path, rate):
+            self._json({"ok": True})
+            return
+        # เสียงหลักไม่ผ่าน — ทำเสียงสำรองไว้ให้ในเกมมีเสียงไปก่อน แต่ยังนับว่าขาด (กดรอบหน้าลองเสียงหลักใหม่)
+        voice_mod.ensure_clip(_voice_cache(), text, rate, tries=0)
+        self._fail("เสียงหลักสร้างไม่สำเร็จ (ใช้เสียงสำรองไปก่อน)", 502)
+
+    def _voice_preview(self, rel: str, howto) -> None:
+        """ฟังประโยคที่เกมจะพูดตอนเลือกใบนี้ — ใช้วิธียิงที่พิมพ์ค้างในฟอร์ม (ยังไม่บันทึกก็ฟังได้).
+
+        เสียงที่สร้างเก็บในแคชเดียวกับตอนเล่น — ข้อความที่บันทึกจริงตรงกันก็ไม่ต้องสร้างซ้ำ
+        ส่วนร่างที่ลองฟังแล้วทิ้ง prune ลบให้เองรอบหน้า (ไม่ตรงกับประโยคไหนในคลัง)
+        """
+        from dataclasses import replace
+
+        with self.store.lock:
+            lu = self.store.find(rel)
+            options = self.store.voice_options()
+        if lu is None:
+            self._fail("ไม่เจอไลน์อัพใบนี้", 404)
+            return
+        if howto is not None:
+            lu = replace(lu, howto=str(howto))
+        text = voice_mod.spoken_lineup(lu, ABILITY_TH, bool(options["notes"]))
+        path = voice_mod.ensure_clip(_voice_cache(), text, int(options["rate"]), tries=2)
+        if path is None:
+            self._fail("สร้างเสียงไม่สำเร็จ — เช็คว่าต่อเน็ตอยู่ แล้วลองใหม่", 502)
+            return
+        self._send(200, path.read_bytes(), "audio/mpeg")
+
+    def _voice_sample(self) -> None:
+        """ทดลองฟังในหน้าเว็บ — ความเร็วตามที่ตั้งไว้ตอนนี้."""
+        path = voice_mod.ensure_clip(_voice_cache(), voice_mod.SAMPLE, int(self.store.voice_options()["rate"]))
+        if path is None:
+            self._fail("สร้างเสียงไม่สำเร็จ — เช็คว่าต่อเน็ตอยู่ แล้วลองใหม่", 502)
+            return
+        self._send(200, path.read_bytes(), "audio/mpeg")
+
+    def _community(self, route: str, query: dict, body: dict) -> None:
+        """แท็บคอมมูนิตี้ (ดู tools/community_web.py) — ยังไม่ล็อกอินตอบ 401 ให้หน้าเว็บขึ้นปุ่มล็อกอิน."""
+        c = self.community
+        arg = lambda name: (query.get(name) or [""])[0]   # noqa: E731
+        try:
+            if route == "/api/community/state":
+                self._json(c.state())
+            elif route == "/api/community/config":
+                self._json(c.configure(body))
+            elif route == "/api/community/login":
+                port = self.server.server_address[1]
+                self._json(c.login(f"http://{HOST}:{port}/community/callback?t={self.token}"))
+            elif route == "/api/community/logout":
+                self._json(c.logout())
+            elif route == "/api/community/feed":
+                self._json(c.feed(arg("agent"), arg("map")))
+            elif route == "/api/community/take":
+                self._json(c.take(str(body.get("id") or "")))
+            elif route == "/api/community/share":
+                self._json(c.share(list(body.get("rels") or [])))
+            elif route == "/api/community/vote":
+                self._json(c.vote(str(body.get("id") or ""), int(body.get("value") or 0)))
+            elif route == "/api/community/sync":
+                self._json({"sent": c.sync()})
+            else:
+                self._fail("ไม่มีเส้นทางนี้", 404)
+        except NotLoggedIn as error:
+            self._fail(error, 401)
+        except KeyError as error:
+            self._fail(error, 404)
+        except (CommunityError, ValueError, OSError) as error:
             self._fail(error)
 
     def _api_get(self, route: str, query: dict) -> None:
@@ -771,6 +1267,14 @@ class Handler(BaseHTTPRequestHandler):
                 return
             ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
             self._send(200, path.read_bytes(), ctype)
+            return
+        if route == "/api/voice/candidates":
+            with store.lock:
+                self._json(store.voice_candidates())
+            return
+        if route == "/api/shrink/candidates":
+            with store.lock:
+                self._json(store.shrink_candidates())
             return
         if route == "/api/map-extras":
             map_ = (query.get("map") or [""])[0]
@@ -854,6 +1358,12 @@ class Handler(BaseHTTPRequestHandler):
             self._json(store.save_edits(body))
         elif route == "/api/delete":
             self._json(store.delete(body["rel"]))
+        elif route == "/api/draw":
+            self._json(store.save_drawing(body["rel"], body.get("png")))
+        elif route == "/api/shrink":
+            self._json(store.shrink(str(body.get("rel") or "")))
+        elif route == "/api/draw/revert":
+            self._json(store.revert_drawing(body["rel"]))
         elif route == "/api/pin":
             self._json(store.set_pin(body["rel"], body["from"], body.get("to")))
         elif route == "/api/pin/clear":
@@ -888,7 +1398,20 @@ class Handler(BaseHTTPRequestHandler):
             self._fail("ไม่มีเส้นทางนี้", 404)
 
     def _static(self, route: str) -> None:
-        """เสิร์ฟไฟล์หน้าเว็บจาก assets/web/ — อยู่นอก exe แก้แล้วกด refresh เห็นผลเลย."""
+        """เสิร์ฟไฟล์หน้าเว็บจาก assets/web/ — อยู่นอก exe แก้แล้วกด refresh เห็นผลเลย.
+
+        ``/art/agents/…`` · ``/art/abilities/…`` = รูปหน้าตัวละคร/ไอคอนสกิล (assets/ ชุดเดียวกับหน้าเข้าโปรแกรม)
+        """
+        if route.startswith("/art/"):
+            rel = route[len("/art/"):]
+            base = ASSETS.resolve()
+            path = (ASSETS / rel).resolve()
+            if (rel.split("/")[0] in ("agents", "abilities") and str(path).startswith(str(base))
+                    and path.is_file() and path.suffix.lower() == ".png"):
+                self._send(200, path.read_bytes(), "image/png", cache=True)
+            else:
+                self._fail("ไม่เจอรูป", 404)
+            return
         name = "index.html" if route in ("/", "") else route.lstrip("/")
         path = (WEB_DIR / name).resolve()
         if not str(path).startswith(str(WEB_DIR.resolve())) or not path.is_file():
@@ -911,6 +1434,33 @@ def _free_port() -> int:
     raise OSError("หาพอร์ตว่างไม่ได้เลยในช่วงที่กำหนด")
 
 
+def _prune_old_thumbs() -> None:
+    """รูปย่อรุ่นเก่า (ชื่อจาก hash() ที่สุ่มใหม่ทุกรอบ) ใช้ซ้ำไม่ได้แล้ว — ล้างทิ้ง เป็นแค่แคชที่สร้างใหม่ได้."""
+    if not THUMBS.is_dir():
+        return
+    for path in THUMBS.glob("*.jpg"):
+        key = path.stem.split("-")[0]
+        if len(key) != 16 or any(c not in "0123456789abcdef" for c in key):
+            path.unlink(missing_ok=True)
+
+
+def _close_with_parent(pid: int, httpd) -> None:
+    """เปิดเบื้องหลังจากหน้าเข้าโปรแกรม (ไม่มีหน้าต่างให้ผู้ใช้กดปิด) — หน้านั้นปิดเมื่อไหร่ ปิดตามเอง
+    ไม่งั้นค้างอยู่ใน Task Manager เงียบๆ และล็อกโฟลเดอร์จนบิ้ว/อัปเดตไม่ได้ (เจอมาแล้ว)."""
+    import ctypes
+
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.OpenProcess(0x00100000, False, pid)        # SYNCHRONIZE
+    if not handle:
+        return
+
+    def watch() -> None:
+        kernel32.WaitForSingleObject(handle, 0xFFFFFFFF)          # รอจนโปรเซสนั้นจบ
+        httpd.shutdown()
+
+    threading.Thread(target=watch, daemon=True).start()
+
+
 def main() -> int:
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -922,11 +1472,26 @@ def main() -> int:
         print(f"[x] ไม่เจอไฟล์หน้าเว็บที่ {WEB_DIR}")
         return 1
 
+    import argparse
+    import os
+
+    parser = argparse.ArgumentParser(prog="web")
+    parser.add_argument("--open", default="", help="เปิดหน้าไหน (library/community/flag/unpinned/add/settings)")
+    parser.add_argument("--parent", type=int, default=0,
+                        help="pid ของหน้าเข้าโปรแกรมที่เปิดตัวนี้ — ตัวนั้นปิด ตัวนี้ปิดตาม")
+    args, _rest = parser.parse_known_args(sys.argv[1:])
+
+    _prune_old_thumbs()
+    clipgrab.prune_proxies(ROOT)
     store = Store()
     source = SourceBrowser()
     token = secrets.token_urlsafe(16)
     port = _free_port()
     url = f"http://{HOST}:{port}/?t={token}"
+    # หน้าเข้าโปรแกรม (launcher.py) ใช้ไฟล์นี้หาเซิร์ฟเวอร์ที่เปิดอยู่แล้ว — ไม่เปิดซ้อนหลายตัว
+    live = ROOT / ".cache" / "web.json"
+    live.parent.mkdir(parents=True, exist_ok=True)
+    live.write_text(json.dumps({"url": url, "pid": os.getpid()}), encoding="utf-8")
 
     handler = partial(Handler, store=store, source=source, token=token)
     httpd = ThreadingHTTPServer((HOST, port), handler)
@@ -941,13 +1506,16 @@ def main() -> int:
     print()
     print("  ปิดโปรแกรมนี้ด้วย Ctrl+C ที่หน้าต่างนี้")
     print()
-    webbrowser.open(url)
+    webbrowser.open(url + (f"#{args.open}" if args.open else ""))
+    if args.parent:
+        _close_with_parent(args.parent, httpd)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         print("ปิดแล้ว")
     finally:
         httpd.server_close()
+        live.unlink(missing_ok=True)
     return 0
 
 

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import math
 import re
 from pathlib import Path
 
@@ -256,3 +257,23 @@ def merge_names(data: dict, map_: str, labels: list[str]) -> int:
             entries[slug] = {"label": label, "xy": None}
             added += 1
     return added
+
+
+SPAWN_SLUGS = {"attack": "spawn-attacker-side", "defense": "spawn-defender-side"}
+
+
+def facing_turn(data: dict, map_: str | None, side: str | None, aspect: float = 1.0) -> int:
+    """หมุนแผนที่กี่องศา (ตามเข็ม 0/90/180/270) ให้จุดเกิดฝั่ง ``side`` อยู่ล่างจอ อีกฝั่งอยู่บน.
+
+    ตรงกับมินิแมพในเกมที่ตั้งให้หมุนตามฝั่ง — มองแผนที่ในแอปแล้วทิศเดียวกับในเกมเลย
+    ปัดทีละ 90° ให้แมพตั้งตรง (จุดเกิดสองฝั่งไม่ได้อยู่ตรงข้ามกันเป๊ะ) · ``aspect`` = กว้าง/สูงของรูป
+    ไม่รู้ฝั่ง/ยังไม่ได้วางจุดเกิดของแมพนี้ = 0 (รูปตามต้นฉบับ) · หน้าเว็บคิดสูตรเดียวกันใน mapview.js
+    """
+    enemy = {"attack": "defense", "defense": "attack"}.get(side or "")
+    entries = data.get(map_ or "", {})
+    own_xy = entries.get(SPAWN_SLUGS.get(side or "", ""), {}).get("xy")
+    enemy_xy = entries.get(SPAWN_SLUGS.get(enemy or "", ""), {}).get("xy")
+    if enemy is None or own_xy is None or enemy_xy is None:
+        return 0
+    angle = math.degrees(math.atan2(enemy_xy[1] - own_xy[1], (enemy_xy[0] - own_xy[0]) * aspect))
+    return round((-90 - angle) / 90) * 90 % 360      # -90° = ชี้ขึ้นบนจอ

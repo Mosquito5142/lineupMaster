@@ -72,6 +72,8 @@ function scopeLibraryAbility() {
 }
 
 /* ---------- โหลด + วาด ---------- */
+// เบราว์เซอร์กู้ค่าช่องค้นหาจากรอบก่อนให้เองได้ (เปิดมาแล้วโดนกรองเงียบๆ) — เริ่มว่างเสมอ
+$("search").value = "";
 async function load(keepRel = null) {
   STATE = await api("state");
   const keep = keepRel || current;
@@ -81,8 +83,27 @@ async function load(keepRel = null) {
   if (keep && STATE.lineups.some((lu) => lu.rel === keep)) select(keep);
   else if (!STATE.lineups.some((lu) => lu.rel === current)) { current = null; showEditor(); }
   $("subtitle").textContent = `คลัง ${STATE.lineups.length} ใบ`;
-  $("btn-unpinned").textContent = `ยังไม่จิ้มหมุด ${STATE.unpinned}`;
+  // ตัวเลขข้างเมนูซ้าย (shell.js) — 0 = สีปกติ ไม่เตือน
+  const setCount = (id, n) => { $(id).textContent = n; $(id).toggleAttribute("data-zero", !n); };
+  setCount("side-all", STATE.lineups.length);
+  setCount("unpinned-count", STATE.unpinned);
+  setCount("side-flag-count", STATE.lineups.filter((lu) => lu.flag).length);
+  if (window.syncSide) syncSide();
+  // ใบที่กด F8 แจ้งผิดในเกม — ชิปแดงให้เห็นทันทีที่เปิดเว็บว่ามีงานค้าง
+  const flagged = STATE.lineups.filter((lu) => lu.flag).length;
+  $("flag-count").textContent = flagged;
+  $("f-flag").classList.toggle("alert", flagged > 0);
 }
+
+// กลับมาที่หน้านี้ (เช่นเพิ่งวางรูปเข้าโฟลเดอร์คลังจาก Explorer) — มีใบเพิ่ม/หายค่อยวาดใหม่
+// ใบเท่าเดิมไม่แตะ ของที่พิมพ์ค้างในช่องแก้ไขจะได้ไม่หาย · มีหน้าต่างเปิดอยู่ก็ไม่แตะ
+window.addEventListener("focus", async () => {
+  if (!STATE || document.querySelector("dialog[open]")) return;
+  const fresh = await api("state").catch(() => null);
+  if (!fresh) return;
+  const rels = (s) => s.lineups.map((lu) => lu.rel).join("\n");
+  if (rels(fresh) !== rels(STATE)) await load();
+});
 
 let filtersBuilt = false;
 function buildFilterOptions() {
@@ -119,11 +140,71 @@ function matches(lu) {
   if ($("f-ability").value && lu.ability !== $("f-ability").value) return false;
   if ($("f-tag").value && !lu.tags.includes($("f-tag").value)) return false;
   if ($("f-fav").classList.contains("on") && !lu.fav) return false;
-  if ($("btn-unpinned").classList.contains("on") && lu.pin) return false;
+  if ($("f-flag").classList.contains("on") && !lu.flag) return false;
+  if ($("btn-unpinned").classList.contains("on") && lu.pin && lu.ability) return false;   // ไม่มีหมุด หรือไม่มีสกิล
   return true;
 }
 
+/** ตัวกรองตัวละคร/สกิลแบบรูป (แทน dropdown) — กดรูปเดิมซ้ำ = ทั้งหมด · ค่าจริงยังอยู่ที่ select เดิม */
+function renderFaces() {
+  const counts = {};
+  for (const lu of STATE.lineups) counts[lu.agent] = (counts[lu.agent] || 0) + 1;
+  const agent = $("f-agent").value;
+  const face = (value, img, label, on, select, fallback) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "face" + (on ? " on" : "");
+    b.title = label;
+    b.innerHTML = `<img src="${img}" alt="">` + (fallback ? `<span>${escapeHtml(fallback)}</span>` : "");
+    b.querySelector("img").addEventListener("error", (e) => { e.target.remove(); b.classList.add("noimg"); });
+    b.addEventListener("click", () => {
+      $(select).value = on ? "" : value;
+      $(select).dispatchEvent(new Event("change"));
+    });
+    return b;
+  };
+  renderAgentPicker(counts, agent);
+  const abils = $("f-abils");
+  abils.innerHTML = "";
+  if (agent) {
+    for (const [tag, th] of abilityOptions(agent)) {
+      abils.append(face(tag, `/art/abilities/${agent}/${tag}.png`, th, $("f-ability").value === tag, "f-ability", th));
+    }
+  }
+  abils.hidden = !agent;
+}
+
+/** ตัวเลือกตัวละคร: ปุ่มเดียว (รูป+ชื่อ) กดแล้วตารางรูปหน้าลงมา — ตัวเยอะแค่ไหนก็ไม่ล้นแถบตัวกรอง */
+const agentName = (id) => (STATE.agents.find((a) => a.id === id) || {}).th || id;
+function renderAgentPicker(counts, agent) {
+  const btn = $("agent-btn");
+  btn.innerHTML = agent
+    ? `<img src="/art/agents/${agent}.png" alt=""><span>${escapeHtml(agentName(agent))}</span><i>▾</i>`
+    : `<span class="all">ทุกตัวละคร</span><i>▾</i>`;
+  btn.classList.toggle("on", !!agent);
+  const grid = $("agent-grid");
+  const text = $("agent-search").value.trim().toLowerCase();
+  grid.innerHTML = "";
+  const items = [["", "ทุกตัวละคร", STATE.lineups.length],
+                 ...Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([id, n]) => [id, agentName(id), n])];
+  for (const [id, name, n] of items) {
+    if (text && id && !`${id} ${name}`.toLowerCase().includes(text)) continue;
+    const cell = document.createElement("button");
+    cell.type = "button";
+    cell.className = "agent-cell" + (id === agent ? " on" : "");
+    cell.innerHTML = (id ? `<img src="/art/agents/${id}.png" alt="">` : `<b class="all-ico">★</b>`) +
+      `<span>${escapeHtml(name)}</span><small>${n}</small>`;
+    cell.addEventListener("click", () => {
+      $("agent-pop").hidden = true;
+      $("f-agent").value = id;
+      $("f-agent").dispatchEvent(new Event("change"));
+    });
+    grid.append(cell);
+  }
+}
+
 function render() {
+  renderFaces();
   shown = STATE.lineups.filter(matches);
   const grid = $("grid");
   grid.innerHTML = "";
@@ -136,6 +217,8 @@ function render() {
 
     // ยังไม่จิ้มหมุด = ขีดเหลืองที่ขอบซ้ายของแถบคำอธิบาย หาเจอทั้งตารางโดยไม่ต้องอ่านตัวหนังสือ
     if (!lu.pin) card.classList.add("nopin");
+    if (lu.howtoAi) card.classList.add("howto-draft");
+    if (lu.flag) card.classList.add("flagged");
     const ability = STATE.abilities.find((a) => a.id === lu.ability);
     // ชื่อไฟล์ส่วนใหญ่ *คือ* เส้นทางอยู่แล้ว ("A Lobby to A Site (attack) #2") — ถ้าโชว์ทั้งชื่อ
     // และเส้นทางที่แกะจากชื่อ มันคือข้อมูลเดียวกันสองบรรทัด เปลืองที่เปล่าๆ เลยโชว์บรรทัดเดียว
@@ -148,14 +231,14 @@ function render() {
           (dup ? ` <u>#${escapeHtml(dup)}</u>` : "")
         : escapeHtml(lu.stem);
     card.innerHTML = `
-      <img loading="lazy" src="/api/thumb?rel=${encodeURIComponent(lu.rel)}&t=${TOKEN}" alt="">
+      <img loading="lazy" src="/api/thumb?rel=${encodeURIComponent(lu.rel)}&v=${lu.v}&t=${TOKEN}" alt="" onload="this.classList.add('ok')">
       <div class="meta">
         <div class="name">${title}</div>
         <div class="slots">
           <span class="site">${escapeHtml((lu.site || "").toUpperCase())}</span>
           <span>${escapeHtml(SIDE_TH[lu.side] || lu.side || "")}</span>
-          <span class="abil">${ability ? escapeHtml(ability.th) : ""}</span>
-          <span class="fav">${lu.fav ? "★" : ""}${lu.gif ? " gif" : ""}</span>
+          <span class="abil">${ability ? escapeHtml(ability.th) : '<em class="noabil">ยังไม่ตั้งสกิล</em>'}</span>
+          <span class="fav">${lu.flag ? '<b class="flag">⚑</b> ' : ""}${lu.fav ? "★" : ""}${lu.gif ? " gif" : ""}</span>
         </div>
       </div>`;
     card.addEventListener("click", (event) => {
@@ -165,9 +248,17 @@ function render() {
     grid.append(card);
   }
   $("empty").hidden = shown.length > 0;
-  $("empty").textContent = STATE.lineups.length
-    ? "ไม่มีใบไหนตรงกับตัวกรองนี้ — ลองล้างตัวกรองดู"
-    : "ยังไม่มีรูปในคลัง — กด “เพิ่มรูปเข้าคลัง” หรือลากไฟล์มาวาง";
+  if (STATE.lineups.length) {
+    // มีรูปในคลังแต่ตัวกรองบังหมด — บอกชัดๆ ว่าคลังไม่ได้ว่าง พร้อมปุ่มล้างตัวกรองตรงนี้เลย
+    $("empty").innerHTML = `ตัวกรองตอนนี้ซ่อนไลน์อัพไว้ทั้งหมด (ในคลังมี ${STATE.lineups.length} ใบ)` +
+      `<br><button type="button" class="primary" id="empty-reset">ล้างตัวกรอง ดูทั้งหมด</button>`;
+    $("empty-reset").addEventListener("click", () => {
+      $("f-reset").click();
+      if (window.syncSide) syncSide();
+    });
+  } else {
+    $("empty").textContent = "ยังไม่มีรูปในคลัง — กด “เพิ่มไลน์อัพ” หรือ Ctrl+V วางรูปจากคลิปบอร์ด";
+  }
   $("count").textContent = `แสดง ${shown.length} จาก ${STATE.lineups.length} ใบ`;
 }
 
@@ -207,7 +298,9 @@ function showEditor() {
   $("placeholder").hidden = !!lu;
   if (!lu) return;
 
-  $("preview-img").src = `/api/image?rel=${encodeURIComponent(lu.rel)}&t=${TOKEN}`;
+  $("preview-img").src = imageUrl(lu);
+  $("btn-draw").hidden = /\.gif$/i.test(lu.rel) || lu.animated;   // ภาพเคลื่อนไหววาดทับไม่ได้
+  $("btn-revert").hidden = !lu.hasOriginal;
   $("preview-path").textContent = lu.rel;
   showRoute(lu);
   $("e-name").value = lu.stem;
@@ -217,9 +310,18 @@ function showEditor() {
   $("e-agent").value = lu.agent || "sova";
   syncAbility(lu.ability);
   $("e-fav").checked = lu.fav;
+  $("e-flag").checked = lu.flag;
+  $("btn-unflag-next").hidden = !lu.flag;
   $("e-tags").value = lu.tags.join(" ");
   $("e-note").value = lu.note;
+  $("e-howto").value = lu.howto;
+  $("howto-ai").hidden = !lu.howtoAi;
   updateDest();
+}
+
+/** URL รูปเต็ม — ต่อเลขเวอร์ชันไฟล์ (v) ไว้ วาดทับแล้วเบราว์เซอร์จะไม่เอารูปเก่าจากแคชมาโชว์ */
+function imageUrl(lu) {
+  return `/api/image?rel=${encodeURIComponent(lu.rel)}&v=${lu.v}&t=${TOKEN}`;
 }
 
 function syncAbility(keep) {
@@ -230,6 +332,30 @@ function syncAbility(keep) {
     options.push([keep, known ? known.th : keep]);
   }
   fill($("e-ability"), options, { blank: "— ไม่ระบุ —", value: keep || "" });
+  renderEditAbilities();
+}
+
+/** สกิลในฟอร์มแก้ไขเป็นไอคอน (ค่าจริงอยู่ที่ select #e-ability ที่ซ่อนไว้) — กดอันเดิมซ้ำ = ไม่ระบุ */
+function renderEditAbilities() {
+  const agent = $("e-agent").value;
+  const box = $("e-abils");
+  box.innerHTML = "";
+  for (const option of $("e-ability").options) {
+    if (!option.value) continue;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "face" + (option.value === $("e-ability").value ? " on" : "");
+    b.title = option.textContent;
+    b.innerHTML = `<img src="/art/abilities/${agent}/${option.value}.png" alt=""><span>${escapeHtml(option.textContent)}</span>`;
+    b.querySelector("img").addEventListener("error", (e) => { e.target.remove(); b.classList.add("noimg"); });
+    b.addEventListener("click", () => {
+      $("e-ability").value = option.value === $("e-ability").value ? "" : option.value;
+      renderEditAbilities();
+    });
+    box.append(b);
+  }
+  const current = $("e-ability").selectedOptions[0];
+  box.dataset.label = current && current.value ? current.textContent : "ไม่ระบุ";
 }
 
 /** ชื่อไลน์อัพเขียนเป็นเส้นวิถี ต้นทาง ▸ ปลายทาง — ชื่อที่ไม่ได้อยู่ในรูปเส้นทางก็โชว์ชื่อเฉยๆ */
@@ -273,7 +399,8 @@ function refit() {
 function wireSplitter(handle, container, varName, storeKey,
                       { min = 180, restMin = 320, axis = "x" } = {}) {
   const saved = recallSize(storeKey);
-  if (saved) container.style.setProperty(varName, saved);
+  // ค่าที่ลากไว้แคบจนแทบหาย (เหลือไม่ถึง 0.35 ส่วน) ไม่เอา — กลับไปค่าเริ่มต้น ไม่ให้คอลัมน์หายไปเงียบๆ
+  if (saved && !(parseFloat(saved) < 0.35)) container.style.setProperty(varName, saved);
   const vertical = axis === "y";
   const bodyClass = vertical ? "splitting-y" : "splitting";
 
@@ -319,7 +446,6 @@ function setWide(on) {
   $("lib-body").classList.toggle("wide", on);
   $("btn-wide").classList.toggle("on", on);
   $("btn-wide").textContent = on ? "⛶ ออกจากจอใหญ่" : "⛶ จอใหญ่";
-  rememberSize("lm-lib-wide", on ? "1" : "0");
   // กรอบเพิ่งเปลี่ยนขนาด ต้องรอให้เบราว์เซอร์จัดหน้าเสร็จก่อนค่อยสั่งพอดีจอ
   requestAnimationFrame(refit);
 }
@@ -362,7 +488,8 @@ function wirePanes() {
   $("btn-prev").addEventListener("click", () => step(-1));
   $("btn-next").addEventListener("click", () => step(1));
   $("btn-wide").addEventListener("click", () => setWide(!$("lib-body").classList.contains("wide")));
-  setWide(recallSize("lm-lib-wide") === "1");
+  // ไม่จำโหมดจอใหญ่ข้ามการเปิด — เคยค้างไว้แล้วเปิดมารายการรูปทางซ้ายหายหมด ดูเหมือนคลังว่าง (ผู้ใช้เจอจริง)
+  setWide(false);
 
   // ย่อ/ขยายหน้าต่างแล้วต้องจัดให้พอดีกรอบใหม่ ไม่งั้นรูปค้างอยู่มุมเดิม
   window.addEventListener("resize", refit);
@@ -385,6 +512,7 @@ async function loadMap() {
   try {
     mapExtras = await api(`map-extras?map=${encodeURIComponent(lu.map)}&side=${lu.side || ""}`);
   } catch { mapExtras = { labels: {}, callouts: [] }; }
+  faceSide(mapView, lu.map, lu.side, mapExtras);
   drawMap();
 }
 
@@ -405,6 +533,14 @@ function drawMap() {
     pending: pendingFrom,
   });
 
+  // ขั้น 1 คลิกจุดยืน → 2 คลิกจุดตก → 3 ปักครบ
+  const stepNow = placingSite ? 0 : pendingFrom ? 2 : (lu.pin && lu.pin.to ? 3 : 1);
+  const steps = $("pin-steps");
+  steps.dataset.step = stepNow;
+  steps.querySelectorAll("span").forEach((el, i) => {
+    el.classList.toggle("now", i + 1 === stepNow);
+    el.classList.toggle("done", i + 1 < stepNow || stepNow === 3);
+  });
   $("pin-status").textContent = placingSite
     ? `คลิกบนแผนที่เพื่อวางป้ายจุด ${placingSite.toUpperCase()} · Esc ยกเลิก`
     : pendingFrom
@@ -436,10 +572,18 @@ async function onMapPick(point) {
     await api("pin", { rel: lu.rel, from, to: point });
     await load(lu.rel);
     await loadMap();
-    say(`จิ้มหมุด ${lu.stem} ครบแล้ว · เหลือที่ยังไม่จิ้ม ${STATE.unpinned} ใบ`);
+    say(`จิ้มหมุด ${lu.stem} ครบแล้ว · เหลือที่ยังไม่ครบ (หมุด/สกิล) ${STATE.unpinned} ใบ`);
   } catch (error) {
     say(error.message, "err");
   }
+}
+
+/** หันแมพให้จุดเกิดฝั่ง ``side`` อยู่ล่างจอ ฝั่งตรงข้ามอยู่บน — ตรงกับมินิแมพในเกมที่ตั้งให้หมุนตามฝั่ง
+ * ไม่รู้ฝั่ง/แมพไม่มีพิกัดจุดเกิด = 0° (รูปตามต้นฉบับ) */
+function faceSide(view, map_, side, extras) {
+  const spawns = (extras && extras.spawns) || {};
+  const enemy = side === "attack" ? "defense" : side === "defense" ? "attack" : null;
+  view.faceSide(`${map_}|${side || ""}`, spawns[side] || null, enemy ? spawns[enemy] || null : null);
 }
 
 /** ต่อปุ่มซูม/หมุนของแถบแผนที่เข้ากับตัวแผนที่ — ใช้ได้ทั้งสองแท็บเพราะปุ่มหน้าตาเหมือนกัน */
@@ -451,8 +595,10 @@ function wireMapBar(bar, view) {
     if (deg) deg.textContent = `${Math.round(view.getRotation())}°`;
     if (slider) slider.value = Math.round(view.getRotation());
   };
+  // sync ทุกครั้งที่มุมมองเปลี่ยน — มุมหมุนเปลี่ยนเองได้ตอนสลับแมพ/ฝั่ง (faceSide) ไม่ใช่แค่ตอนกดปุ่ม
   view.onView((state) => {
     if (zoom) zoom.textContent = `${Math.round(state.scale * 100)}%`;
+    sync();
   });
   for (const button of bar.querySelectorAll("[data-mv]")) {
     button.addEventListener("click", () => {
@@ -462,7 +608,7 @@ function wireMapBar(bar, view) {
       else if (act === "fit") view.fit();
       else if (act === "cw") { view.setRotation(view.getRotation() + 15); sync(); }
       else if (act === "ccw") { view.setRotation(view.getRotation() - 15); sync(); }
-      else if (act === "rot0") { view.setRotation(0); sync(); }
+      else if (act === "rot0") { view.resetFacing(); sync(); }
     });
   }
   if (slider) slider.addEventListener("input", () => { view.setRotation(+slider.value); sync(); });
@@ -510,9 +656,12 @@ async function runBulk(payload) {
 /* ---------- เพิ่มรูป ---------- */
 let addQueue = [];
 
-function openAdd(files) {
+let addTotal = 0;
+function openAdd(files, next = false) {
   addQueue = files;
   if (!addQueue.length) return;
+  if (!next) addTotal = files.length;
+  $("add-step").textContent = addTotal > 1 ? `ใบที่ ${addTotal - addQueue.length + 1}/${addTotal}` : "";
   const lu = current ? lineup(current) : null;
   const file = addQueue[0];
   $("add-info").textContent = addQueue.length > 1
@@ -556,25 +705,82 @@ async function submitAdd() {
     await load(result.rel);
     say(result.message);
   } catch (error) { say(error.message, "err"); }
-  if (addQueue.length) openAdd(addQueue);
+  if (addQueue.length) openAdd(addQueue, true);
+  else setTimeout(() => $("lib-mapstage").scrollIntoView({ block: "nearest" }), 200);   // ขั้น 3: ปักหมุดใบใหม่
 }
 
 const imageFiles = (list) => [...list].filter((f) => f.type.startsWith("image/"));
 
+/** ค่าจากฟอร์มแก้ไข (ส่งให้ /api/save) */
+function formBody(lu) {
+  return {
+    rel: lu.rel,
+    name: $("e-name").value.trim(),
+    map: $("e-map").value, side: $("e-side").value,
+    site: $("e-site").value, agent: $("e-agent").value,
+    ability: $("e-ability").value || null,
+    fav: $("e-fav").checked,
+    flag: $("e-flag").checked,
+    tags: $("e-tags").value.split(/\s+/).filter(Boolean),
+    note: $("e-note").value,
+    howto: $("e-howto").value,
+    // ร่าง AI ที่ยังไม่ได้แตะ = ยังเป็นร่าง · พิมพ์แก้เองหรือกด "ถูกแล้ว" = ตรวจแล้ว
+    howtoAi: lu.howtoAi && !$("howto-ai").hidden && $("e-howto").value.trim() === lu.howto.trim(),
+  };
+}
+
 /* ---------- ต่อสายเหตุการณ์ ---------- */
 function wire() {
+  // ฟังเสียงที่เกมจะพูด — เว้นวรรค/จุลภาค/จุด ในวิธียิงคือที่เสียงหยุดหายใจ ลองปรับแล้วฟังซ้ำได้
+  let howtoAudio = null;
+  $("btn-howto-play").addEventListener("click", async () => {
+    const lu = lineup(current);
+    if (!lu) return;
+    const button = $("btn-howto-play");
+    if (howtoAudio) { howtoAudio.pause(); howtoAudio = null; }
+    button.disabled = true;
+    button.textContent = "กำลังสร้างเสียง…";
+    try {
+      const response = await fetch(`/api/voice/preview?t=${encodeURIComponent(TOKEN)}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rel: lu.rel, howto: $("e-howto").value }),
+      });
+      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || "สร้างเสียงไม่สำเร็จ");
+      howtoAudio = new Audio(URL.createObjectURL(await response.blob()));
+      await howtoAudio.play();
+    } catch (error) {
+      say(error.message, "err");
+    } finally {
+      button.disabled = false;
+      button.textContent = "▶ ฟัง";
+    }
+  });
+  $("btn-howto-ok").addEventListener("click", () => {
+    $("howto-ai").hidden = true;          // ส่งฟอร์มพร้อม howtoAi=false = ตรวจแล้ว
+    $("form").requestSubmit();
+  });
   for (const id of ["f-map", "f-side", "f-site", "f-ability", "f-tag"]) {
     $(id).addEventListener("change", render);
   }
   $("f-agent").addEventListener("change", () => { scopeLibraryAbility(); render(); });
+  $("agent-btn").addEventListener("click", (event) => {
+    event.stopPropagation();
+    $("agent-pop").hidden = !$("agent-pop").hidden;
+    if (!$("agent-pop").hidden) { $("agent-search").value = ""; render(); $("agent-search").focus(); }
+  });
+  $("agent-search").addEventListener("input", () => render());
+  $("agent-pop").addEventListener("click", (event) => event.stopPropagation());
+  document.addEventListener("click", () => { $("agent-pop").hidden = true; });
+  document.addEventListener("keydown", (event) => { if (event.key === "Escape") $("agent-pop").hidden = true; });
   $("search").addEventListener("input", render);
-  for (const id of ["f-fav", "btn-unpinned"]) {
+  for (const id of ["f-fav", "f-flag", "btn-unpinned"]) {
     $(id).addEventListener("click", () => { $(id).classList.toggle("on"); render(); });
   }
   $("f-reset").addEventListener("click", () => {
     for (const id of ["f-map", "f-side", "f-site", "f-agent", "f-ability", "f-tag"]) $(id).value = "";
     $("search").value = "";
     $("f-fav").classList.remove("on");
+    $("f-flag").classList.remove("on");
     $("btn-unpinned").classList.remove("on");
     scopeLibraryAbility();   // ตัวละครกลับเป็นทั้งหมด ช่องสกิลต้องกลับมาครบด้วย
     render();
@@ -590,26 +796,57 @@ function wire() {
     const lu = lineup(current);
     if (!lu) return;
     try {
-      const result = await api("save", {
-        rel: lu.rel,
-        name: $("e-name").value.trim(),
-        map: $("e-map").value, side: $("e-side").value,
-        site: $("e-site").value, agent: $("e-agent").value,
-        ability: $("e-ability").value || null,
-        fav: $("e-fav").checked,
-        tags: $("e-tags").value.split(/\s+/).filter(Boolean),
-        note: $("e-note").value,
-      });
+      const result = await api("save", formBody(lu));
       await load(result.rel);
       await loadMap();
       say("บันทึกแล้ว — " + result.changes.join(", "));
     } catch (error) { say(error.message, "err"); }
   });
 
+  // คิว ⚑ ต้องแก้: ติ๊กธงออก บันทึก (ใบนี้หลุดจากรายการที่กรองไว้) แล้วเปิดใบที่ต้องแก้ถัดไปเลย
+  $("btn-unflag-next").addEventListener("click", async () => {
+    const lu = lineup(current);
+    if (!lu) return;
+    const index = shown.findIndex((x) => x.rel === lu.rel);
+    $("e-flag").checked = false;
+    try {
+      const result = await api("save", formBody(lu));
+      await load(result.rel);
+      const next = shown.filter((x) => x.rel !== result.rel)[Math.max(0, index)] ||
+                   shown.find((x) => x.rel !== result.rel);
+      if (next) await select(next.rel);
+      say(next ? "เอาธงออกแล้ว — ใบถัดไป" : "เอาธงออกแล้ว · ไม่มีใบที่ต้องแก้เหลือ");
+    } catch (error) { say(error.message, "err"); }
+  });
+
+  $("btn-draw").addEventListener("click", () => {
+    const lu = lineup(current);
+    if (!lu) return;
+    openDrawer(imageUrl(lu), lu.stem, async (png) => {
+      try {
+        const result = await api("draw", { rel: lu.rel, png });
+        await load(lu.rel);
+        say(result.message);
+        return true;
+      } catch (error) { say(error.message, "err"); return false; }
+    });
+  });
+  $("btn-revert").addEventListener("click", async () => {
+    const lu = lineup(current);
+    if (!lu || !(await uiConfirm(`เอารูปก่อนวาดของ "${lu.stem}" กลับมา?\nรูปที่วาดไว้จะย้ายไป .trash/ (ไม่ได้ลบถาวร)`,
+      { title: "กลับเป็นรูปเดิม", ok: "กลับเป็นรูปเดิม" }))) return;
+    try {
+      const result = await api("draw/revert", { rel: lu.rel });
+      await load(lu.rel);
+      say(result.message);
+    } catch (error) { say(error.message, "err"); }
+  });
+
   $("btn-delete").addEventListener("click", async () => {
     const lu = lineup(current);
     if (!lu) return;
-    if (!confirm(`ลบ "${lu.stem}" ?\n\nไฟล์จะถูกย้ายไปที่ .trash/ (ไม่ได้ลบถาวร ลากกลับมาเองได้)\nหมุดและแท็กของใบนี้จะถูกล้างไปด้วย`)) return;
+    if (!(await uiConfirm(`"${lu.stem}"\n\nไฟล์จะถูกย้ายไปที่ .trash/ (ไม่ได้ลบถาวร กู้คืนได้)\nหมุดและแท็กของใบนี้จะถูกล้างไปด้วย`,
+      { title: "ลบไลน์อัพนี้?", ok: "ลบ", danger: true }))) return;
     try {
       const result = await api("delete", { rel: lu.rel });
       current = null;
@@ -666,18 +903,13 @@ function wire() {
     else addQueue = [];
   });
 
-  document.addEventListener("dragover", (event) => {
-    event.preventDefault();
-    document.body.classList.add("dragging");
-  });
-  document.addEventListener("dragleave", (event) => {
-    if (event.relatedTarget === null) document.body.classList.remove("dragging");
-  });
-  document.addEventListener("drop", (event) => {
-    event.preventDefault();
-    document.body.classList.remove("dragging");
-    const files = imageFiles(event.dataTransfer.files);
-    if (files.length) openAdd(files);
+  // ไม่มีลากไฟล์มาวางแล้ว (ผู้ใช้ขอเอาออก) — มันแย่งการลากเลื่อนดูรูปที่ซูมอยู่ แล้วขึ้นจอ "วางรูปที่นี่" มาบัง
+  // เพิ่มรูปใช้ปุ่ม "เพิ่มไลน์อัพ" หรือ Ctrl+V · ลากรูปจากที่อื่นมาปล่อยก็ไม่ให้เบราว์เซอร์เปิดรูปนั้นแทนหน้านี้
+  document.addEventListener("dragover", (event) => event.preventDefault());
+  document.addEventListener("drop", (event) => event.preventDefault());
+  // รูปในหน้า (ไลน์อัพ แผนที่ รูปย่อ) ลากออกไม่ได้ — ลาก = เลื่อนดูรูปที่ซูมอยู่อย่างเดียว
+  document.addEventListener("dragstart", (event) => {
+    if (event.target instanceof HTMLImageElement || event.target instanceof SVGElement) event.preventDefault();
   });
   document.addEventListener("paste", (event) => {
     const files = imageFiles([...event.clipboardData.files]);

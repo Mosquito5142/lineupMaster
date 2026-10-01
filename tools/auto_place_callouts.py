@@ -32,9 +32,9 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from lineupmaster import callout_autoplace as auto  # noqa: E402
 from lineupmaster import callouts as callout_mod  # noqa: E402
-from lineupmaster.paths import MAPS, ROOT  # noqa: E402
+from lineupmaster.paths import ASSETS, MAPS, ROOT  # noqa: E402
 
-REFERENCE_DIR = ROOT / "assets" / "callout_reference"
+REFERENCE_DIR = ASSETS / "callout_reference"
 
 
 def _utf8_stdout() -> None:

@@ -8,9 +8,10 @@
 const SET = { state: null, timers: {}, poll: null };
 
 const SET_GROUPS = [
-  ["auto", "โหมดตามตัว (F9)"],
+  ["auto", "โหมดตามตัว (F9 / F10)"],
   ["match", "เทียบชื่อโซนที่อ่านได้"],
   ["map", "หน้าแผนที่"],
+  ["voice", "เสียงพูด"],
   ["window", "หน้าต่างโปรแกรม"],
 ];
 
@@ -78,6 +79,7 @@ async function saveSetting(key, value) {
   try {
     SET.state = await api("settings/set", { key, value });
     renderSettings();
+    if (key === "voice.rate" || key === "voice.notes") loadVoice();   // ความเร็ว/โน้ตเปลี่ยน = ประโยคชุดใหม่
     say("บันทึกแล้ว — โปรแกรมหลักใช้ค่าใหม่รอบถัดไป", "ok");
   } catch (error) {
     say(error.message, "err");
@@ -115,8 +117,141 @@ async function pollLive() {
   try { renderLive(await api("settings/live")); } catch { /* เซิร์ฟเวอร์ปิด — รอบหน้าลองใหม่ */ }
 }
 
+/* ---------- ย่อขนาดรูปทั้งคลัง ----------
+ * PNG → WebP คุณภาพสูง ขนาดภาพเท่าเดิม (ดู lineupmaster/shrink.py) ส่งทีละใบให้เห็นความคืบหน้า
+ * และกดหยุดกลางทางได้ — ใบที่ทำไปแล้วเสร็จสมบูรณ์ทีละใบ หยุดตรงไหนคลังก็ไม่พัง */
+const SHRINK = { rels: [], bytes: 0, running: false, stop: false };
+const mb = (bytes) => `${(bytes / 1e6).toFixed(bytes >= 1e8 ? 0 : 1)} MB`;
+
+async function loadShrink() {
+  if (SHRINK.running) return;
+  try {
+    const data = await api("shrink/candidates");
+    SHRINK.rels = data.rels;
+    SHRINK.bytes = data.bytes;
+    $("shrink-info").textContent = data.rels.length
+      ? `รูป PNG ${data.rels.length} ใบ รวม ${mb(data.bytes)} → แปลงเป็น WebP ความละเอียดเท่าเดิม ` +
+        `ไฟล์เล็กลงราว 90% · รูปเดิมย้ายเข้า .trash (กู้คืนได้)`
+      : "รูปทั้งคลังย่อแล้ว ไม่มีอะไรต้องทำ";
+    $("shrink-go").disabled = !data.rels.length;
+  } catch (error) {
+    $("shrink-info").textContent = error.message;
+  }
+}
+
+async function runShrink() {
+  const rels = SHRINK.rels.slice();
+  if (!rels.length) return;
+  if (!(await uiConfirm(`แปลง ${rels.length} ใบเป็น WebP (ใช้เวลาราว ${Math.max(1, Math.round(rels.length * 0.4 / 60))} นาที)\n` +
+      "หมุด แท็ก และสถิติตามไปครบ · รูป PNG เดิมย้ายเข้า .trash ไม่ได้ลบถาวร\n" +
+      "ถ้าเปิดโปรแกรมหลักค้างอยู่ ให้ปิดก่อน แล้วเปิดใหม่หลังทำเสร็จ",
+      { title: "ย่อขนาดรูปทั้งคลัง?", ok: "เริ่มย่อ" }))) return;
+
+  SHRINK.running = true; SHRINK.stop = false;
+  const bar = $("shrink-bar");
+  bar.hidden = false; bar.max = rels.length; bar.value = 0;
+  $("shrink-go").disabled = true;
+  $("shrink-stop").hidden = false;
+  let done = 0, skipped = 0, failed = 0, saved = 0;
+  for (const rel of rels) {
+    if (SHRINK.stop) break;
+    try {
+      const result = await api("shrink", { rel });
+      if (result.skipped) skipped += 1;
+      else { done += 1; saved += result.oldBytes - result.newBytes; }
+    } catch {
+      failed += 1;
+    }
+    bar.value = done + skipped + failed;
+    $("shrink-info").textContent = `ย่อแล้ว ${done}/${rels.length} ใบ · ลดไปแล้ว ${mb(saved)}`;
+  }
+  SHRINK.running = false;
+  bar.hidden = true;
+  $("shrink-stop").hidden = true;
+  const parts = [`ย่อ ${done} ใบ ลดไป ${mb(saved)}`];
+  if (skipped) parts.push(`ข้าม ${skipped} ใบ (ไฟล์เดิมเล็กกว่าอยู่แล้ว)`);
+  if (failed) parts.push(`พลาด ${failed} ใบ`);
+  if (SHRINK.stop) parts.push("หยุดกลางทาง — กดอีกทีทำต่อจากที่ค้าง");
+  say(parts.join(" · ") + " · รูปเดิมอยู่ใน .trash ถ้าดูแล้วชัดเหมือนเดิมค่อยล้างถังเพื่อเอาพื้นที่คืน",
+      failed ? "err" : "ok");
+  await load();            // rel เปลี่ยนเป็น .webp แล้ว — คลังในหน้าเว็บต้องอ่านใหม่
+  await loadShrink();
+}
+
+$("shrink-go").addEventListener("click", () => runShrink().catch((error) => say(error.message, "err")));
+$("shrink-stop").addEventListener("click", () => { SHRINK.stop = true; });
+
+/* ---------- ไฟล์เสียงพูด ----------
+ * สร้าง mp3 ของทุกใบไว้ก่อนเล่น (ดู lineupmaster/voice.py) — ยิงพร้อมกันทีละ 8 ประโยค
+ * (แต่ละประโยครอบริการเสียงราว 1 วินาที ทีละอันจะนานเกิน) · กดหยุดได้ ที่ทำแล้วไม่หาย */
+const VOICE = { missing: [], running: false, stop: false };
+
+async function loadVoice() {
+  if (VOICE.running) return;
+  try {
+    const data = await api("voice/candidates");
+    VOICE.missing = data.missing;
+    $("voice-info").textContent = data.missing.length
+      ? `ยังไม่มีเสียง ${data.missing.length} จาก ${data.total} ประโยค · สร้างครั้งเดียว ` +
+        `(ต้องต่อเน็ต) แล้วตอนเล่นเสียงขึ้นทันทีไม่ต้องใช้เน็ต`
+      : `มีเสียงครบทั้ง ${data.total} ประโยคแล้ว · ใบใหม่ที่เพิ่มทีหลังโปรแกรมสร้างให้เองตอนกดครั้งแรก`;
+    if (data.pruned) {
+      $("voice-info").textContent += ` · ลบเสียงเก่าที่ไม่ใช้แล้ว ${data.pruned} ไฟล์ (${mb(data.freed)})`;
+    }
+    $("voice-go").disabled = !data.missing.length;
+  } catch (error) {
+    $("voice-info").textContent = error.message;
+  }
+}
+
+async function runVoice() {
+  const todo = VOICE.missing.slice();
+  if (!todo.length) return;
+  VOICE.running = true; VOICE.stop = false;
+  const bar = $("voice-bar");
+  bar.hidden = false; bar.max = todo.length; bar.value = 0;
+  $("voice-go").disabled = true;
+  $("voice-stop").hidden = false;
+  let done = 0, failed = 0;
+  const worker = async () => {
+    while (todo.length && !VOICE.stop) {
+      const text = todo.shift();
+      try { await api("voice/make", { text }); done += 1; } catch { failed += 1; }
+      bar.value = done + failed;
+      $("voice-info").textContent = `สร้างแล้ว ${done}/${bar.max} ประโยค` + (failed ? ` · พลาด ${failed}` : "");
+    }
+  };
+  // บริการเสียงตอบพลาดบ่อย (รอราว 2.6 วิกว่าจะรู้ว่าพลาด) — ยิงพร้อมกันหลายอันให้เวลารอซ้อนกัน
+  await Promise.all(Array.from({ length: 8 }, worker));
+  VOICE.running = false;
+  bar.hidden = true;
+  $("voice-stop").hidden = true;
+  say(`สร้างเสียง ${done} ประโยค` + (failed ? ` · พลาด ${failed} (กดอีกทีทำเฉพาะที่ขาด)` : "") +
+      (VOICE.stop ? " · หยุดกลางทาง" : ""), failed ? "err" : "ok");
+  await loadVoice();
+}
+
+$("voice-go").addEventListener("click", () => runVoice().catch((error) => say(error.message, "err")));
+$("voice-stop").addEventListener("click", () => { VOICE.stop = true; });
+$("voice-sample").addEventListener("click", async () => {
+  const button = $("voice-sample");
+  button.disabled = true;
+  try {
+    // ต่อท้ายเวลาไว้ — ปรับความเร็วแล้วกดฟังใหม่ต้องได้ไฟล์ใหม่ ไม่ใช่ของที่เบราว์เซอร์แคชไว้
+    const audio = new Audio(`/api/voice/sample?t=${encodeURIComponent(TOKEN)}&n=${Date.now()}`);
+    audio.addEventListener("ended", () => { button.disabled = false; });
+    audio.addEventListener("error", () => { button.disabled = false; say("ทดลองฟังไม่ได้ — เช็คว่าต่อเน็ตอยู่", "err"); });
+    await audio.play();
+  } catch (error) {
+    button.disabled = false;
+    say(error.message, "err");
+  }
+});
+
 function openSettingsTab() {
   loadSettings();
+  loadShrink();
+  loadVoice();
   pollLive();
   if (!SET.poll) SET.poll = setInterval(pollLive, 1000);
 }

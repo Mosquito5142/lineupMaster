@@ -14,7 +14,7 @@
 จากนั้นสรุปรายใบให้ผู้ใช้ดู
 
 ## กติกาเหล็ก
-- **ข้อมูลจริงอยู่ที่ `dist/LineupMaster/`** (ข้างๆ exe) ไม่ใช่รากโปรเจกต์ · `--root dist/LineupMaster` เสมอ
+- **ข้อมูลจริงอยู่ที่ `dist/LineupMaster/data/`** (ตั้งแต่ 2026-09-26 ข้อมูลย้ายเข้า data/ ข้าง exe เหลือแค่ตัวโปรแกรม) ไม่ใช่รากโปรเจกต์ · `--root dist/LineupMaster/data` เสมอ
 - **ไม่แตะตัวละครอื่น** โดยเฉพาะโซวา ผู้ใช้ทำรูปเองดีอยู่แล้ว · ใบที่ผู้ใช้วางเข้าคลังเอง (ไม่ได้มาจากเว็บ) เครื่องมือข้ามให้เอง
 - **ห้ามลบถาวร:** ตัดใบ = ย้ายเข้า `.trash` เท่านั้น ถ้าผู้ใช้อยากล้างถัง ให้บอกวิธีให้เขาลบเอง
 - **Python บนเครื่องนี้:** `.venv\Scripts\python.exe` ใช้ไม่ได้ (ชี้ไปเครื่องอื่น) และ**ห้ามแก้ `.venv/pyvenv.cfg`** ให้ใช้
@@ -27,7 +27,7 @@
 - `browser.py`, `app.py`, `README.md`, `config.yaml` มีงานเก่าที่ยังไม่ commit ค้าง ผู้ใช้ไม่ได้ใช้ git แล้ว **ไม่ต้อง commit ก็ได้**
 
 ## ขั้น 0 — เช็คว่าพร้อม
-1. ผู้ใช้โหลดรูปมาแล้วหรือยัง: ดูว่ามีโฟลเดอร์ `dist/LineupMaster/lineups/<แมพ>/*/<agent>/` หรือเปล่า
+1. ผู้ใช้โหลดรูปมาแล้วหรือยัง: ดูว่ามีโฟลเดอร์ `dist/LineupMaster/data/lineups/<แมพ>/*/<agent>/` หรือเปล่า
    - ยังไม่มี = บอกผู้ใช้ไปโหลดเองในหน้า "หาไลน์อัพจากเว็บ" (เลือกตัวละคร + แมพ → เอามาทีละใบ/ทั้งหน้า)
    - Claude โหลดแทนไม่ได้ เพราะหน้าเว็บต้องต่อรูปหลายขั้นเป็นใบเดียวในเบราว์เซอร์
    - ชื่อโฟลเดอร์ตัวละครเป็นตัวเล็กตามเว็บ: `kayo`, `viper`, `killjoy` …
@@ -38,9 +38,9 @@
 
 ## ขั้น 1 — เตรียม
 ```
-PYTHONPATH=".venv/Lib/site-packages" C:/Users/PC/AppData/Local/Programs/Python/Python312/python.exe -X utf8 tools/review_prepare.py --root dist/LineupMaster --agent <agent> --maps <แมพ1,แมพ2>
+PYTHONPATH=".venv/Lib/site-packages" C:/Users/PC/AppData/Local/Programs/Python/Python312/python.exe -X utf8 tools/review_prepare.py --root dist/LineupMaster/data --agent <agent> --maps <แมพ1,แมพ2>
 ```
-- ได้โฟลเดอร์ `dist/LineupMaster/.cache/<agent>-review/`
+- ได้โฟลเดอร์ `dist/LineupMaster/data/.cache/<agent>-review/`
   - `input-<แมพ>-<ฝั่ง>[-n].json` ชุดละ ≤22 ใบ
   - `map-<แมพ>.png` แผนที่อ้างอิงมีเส้นตาราง + ชื่อโซน
   - `BRIEF.md` คู่มือสำหรับผู้ดูรูป
@@ -56,7 +56,7 @@ PYTHONPATH=".venv/Lib/site-packages" C:/Users/PC/AppData/Local/Programs/Python/P
 
 ```
 You are reviewing VALORANT <agent> lineup screenshots one by one with your own eyes (use the Read tool to open every image).
-Working folder: C:/Users/PC/Desktop/CODE/lineupMaster/dist/LineupMaster/.cache/<agent>-review/
+Working folder: C:/Users/PC/Desktop/CODE/lineupMaster/dist/LineupMaster/data/.cache/<agent>-review/
 1. Read BRIEF.md there first — it is your full instructions (output format, rules, coordinate self-check section).
 2. Do chunk(s) `input-<map>-<side>[-n].json` and write the matching `out-<map>-<side>[-n].json` (one entry per input image, in the out file matching its input chunk). If there are several chunks of the same map+side, judge duplicates across all of them together.
 3. Reference map: `map-<map>.png` — all coordinates must be on that image.
@@ -71,7 +71,7 @@ Reply in under 8 lines: kept/dropped counts, notable uncertainties, output path(
 - ครบทุกชุดแล้วรันแบบทดลอง ตัวนี้**ตรวจความครบให้เองด้วย** (ทุกใบมีผล · พิกัด 0–1 · ใบที่ถูกอ้างว่า "ซ้ำ" ต้องถูกเก็บ):
 
   ```
-  ... tools/apply_review.py --root dist/LineupMaster --agent <agent> --dry-run
+  ... tools/apply_review.py --root dist/LineupMaster/data --agent <agent> --dry-run
   ```
 
   - ไม่ผ่านจะบอกว่าใบไหน · ผ่าน = ได้ตัวเลข เก็บ/ตัด และหน้า `<agent>-review-dryrun.html`
@@ -81,7 +81,7 @@ Reply in under 8 lines: kept/dropped counts, notable uncertainties, output path(
 
 ## ขั้น 4 — แก้จริง
 ```
-... tools/apply_review.py --root dist/LineupMaster --agent <agent>
+... tools/apply_review.py --root dist/LineupMaster/data --agent <agent>
 ```
 - สำรอง json เดิมไว้ที่ `.trash/<เวลา>-<agent>-review/_json/` ก่อนแก้
 - ย้าย/เปลี่ยนชื่อ/ตัดผ่าน `lineupmaster.library` (หมุด/แท็ก/journal ตามไปเอง)
@@ -90,7 +90,7 @@ Reply in under 8 lines: kept/dropped counts, notable uncertainties, output path(
 - ถ้าแก้ `browser.py` ในขั้น 0: บิ้ว exe ใหม่ (`tools/build_exe.py` ต้องปิด exe ก่อน)
 
 ## ขั้น 5 — สรุปให้ผู้ใช้
-- ส่ง `dist/LineupMaster/<agent>-review.html` (`SendUserFile`, display render)
+- ส่ง `dist/LineupMaster/data/<agent>-review.html` (`SendUserFile`, display render)
   - รายใบ: รูป · เก็บ/ตัด + เหตุผล · ชื่อเดิม→ใหม่ · ยืน→ตก + ความมั่นใจ
 - บอกเป็นภาษาไทยสั้นๆ:
   - จำนวนเก็บ/ตัด

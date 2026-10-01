@@ -20,6 +20,11 @@ ROOT = Path(SPECPATH)
 # โมดูลของเครื่องมือย่อยถูกเรียกด้วย importlib จึงต้องบอก PyInstaller ตรงๆ
 HIDDEN = [
     "manage",
+    "web_manage",
+    "compose_lineup",
+    "browse_lineups",
+    "lineup_sources",
+    "route_pins",
     "pin_lineups",
     "fetch_maps",
     "fetch_callouts",
@@ -79,7 +84,9 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,                 # UPX บีบแล้วโดน antivirus จับง่ายขึ้นอีก จึงไม่ใช้
-    console=True,              # ต้องมีคอนโซล คำสั่ง maps/--list ถึงจะเห็นผลลัพธ์
+    # ไม่มีหน้าต่างคอนโซลดำโผล่ตอนเปิด (ผู้ใช้ทั่วไปงง) — ข้อความ print ไปที่คอนโซลที่เรียก
+    # (เช่นพิมพ์ --list ใน cmd) หรือไฟล์ data/.cache/lineupmaster.log แทน ดู tools/entry.py
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

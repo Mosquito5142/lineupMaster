@@ -31,7 +31,7 @@ _HERE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_HERE / "src"))
 
 from lineupmaster import config as config_mod  # noqa: E402
-from lineupmaster.paths import ROOT  # noqa: E402
+from lineupmaster.paths import APP, ASSETS, ROOT  # noqa: E402
 
 # เลขเวอร์ชันแพตช์ที่ฝังอยู่ใน URL รูปของ tracker.gg — ค่าเดียวใช้ร่วมกันได้ทุกแมพ ณ ตอนที่
 # เขียนสคริปต์นี้ (เช็ก 13 แมพแล้วขึ้นเลขเดียวกันหมด) ดูวิธีหาใหม่ในหัวไฟล์ด้านบนถ้าลิงก์เสีย
@@ -72,7 +72,7 @@ def main() -> int:
         print("ไม่เจอรายชื่อแมพใน aliases.yaml")
         return 1
 
-    out_dir = ROOT / "assets" / "callout_reference"
+    out_dir = ASSETS / "callout_reference"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"ดึงรูปอ้างอิงจาก tracker.gg (เวอร์ชัน {_VERSION}) ...")
@@ -89,7 +89,7 @@ def main() -> int:
             failed.append(name)
             continue
         saved.append(name)
-        print(f"  เก็บแล้ว: {target.relative_to(ROOT)}")
+        print(f"  เก็บแล้ว: {target.relative_to(APP)}")
 
     if skipped:
         print(f"\nมีอยู่แล้ว {len(skipped)} แมพ (ใช้ --force ถ้าอยากโหลดทับ): {', '.join(skipped)}")

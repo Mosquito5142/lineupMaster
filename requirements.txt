@@ -4,9 +4,14 @@ PyYAML>=6.0
 # อ่านชื่อโซนจากรูปด้วย Windows OCR ในตัว — มี wheel สำเร็จรูปให้แค่ถึง Python 3.12 เท่านั้น
 # (ดูเหตุผลที่ .venv ของโปรเจกต์นี้ตรึงไว้ที่ 3.12 ใน README หัวข้อ "ตั้งค่าโปรเจกต์")
 winsdk>=1.0.0b10
+# เสียงพูดภาษาไทย (Premwadee) — สร้างไฟล์ mp3 ล่วงหน้าผ่านเน็ต ตอนเล่นเปิดไฟล์ในเครื่อง (voice.py)
+edge-tts>=7.0
+# นำเข้าไลน์อัพจากคลิป YouTube (clipgrab.py) — หาลิงก์วิดีโอ + ถอดเฟรมเฉพาะช่วงท่านั้น
+yt-dlp>=2026.8
+av>=14
 
 # แพ็กเกจของระบบเสียงเดิม (เลิกใช้แล้ว เปลี่ยนไปควบคุมด้วย Numpad)
 # ยังติดตั้งค้างอยู่ในเครื่อง ถ้าอยากคืนพื้นที่ดิสก์ ~2GB ให้ถอนออกด้วย:
 #   .venv\Scripts\python.exe -m pip uninstall -y faster-whisper ctranslate2 onnxruntime
-#   .venv\Scripts\python.exe -m pip uninstall -y sounddevice av tokenizers huggingface-hub
+#   .venv\Scripts\python.exe -m pip uninstall -y sounddevice tokenizers huggingface-hub
 #   .venv\Scripts\python.exe -m pip uninstall -y nvidia-cublas-cu12 nvidia-cudnn-cu12 nvidia-cuda-nvrtc-cu12

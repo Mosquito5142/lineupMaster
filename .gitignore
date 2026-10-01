@@ -8,6 +8,8 @@ last-view.json
 # git สับสน ต้นฉบับจริงคือของใน dist/LineupMaster/ ซึ่งไม่เข้า git เลยเหมือนกัน (ดูด้านล่าง)
 /positions.json
 /callouts.json
+/compose.json
+/browse.json
 
 # ผลลัพธ์การบิ้ว exe (สร้างใหม่ได้ด้วย tools/build_exe.py) — **รวมไฟล์ข้อมูลผู้ใช้ทั้งหมด**
 # (หมุด/ชื่อโซน/แท็ก/กรอบแคป/รูปไลน์อัพ) ตั้งใจให้เก็บผ่าน Google Drive แทน ไม่ผ่าน git เลย
@@ -30,3 +32,6 @@ lineups.rar
 # shortcut ของ Windows (.lnk) — ฝัง path เต็มของเครื่องที่สร้างไว้ข้างใน (เช่น C:\Users\PC\...)
 # เปิดในเครื่องอื่นก็ใช้ไม่ได้อยู่ดี สร้างใหม่เองได้ด้วย create_shortcut.bat
 *.lnk
+
+# รูปที่โหลดมาจากเว็บไลน์อัพไว้ดูเลือก (browse_lineups.py) — เป็นแค่แคช ลบทิ้งได้ โหลดใหม่เองได้
+.cache/

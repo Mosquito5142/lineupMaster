@@ -417,7 +417,10 @@ function refilterSource() {
     (!query || `${l.t} ${l.desc || ""} ${l.d || ""}`.toLowerCase().includes(query)) &&
     (!hideOwned || !isOwned(l)) &&
     !taken.has(l.uid) && !skipped.has(l.uid));
-  SRC.shown = SRC.pool.filter((l) => (!from || l.from === from) && (!to || l.to === to));
+  // ใบจากคลิปที่วางลิงก์เปิดไว้ไม่ได้อยู่ในแคตตาล็อก — ต้องพาติดไปด้วย ไม่งั้นรายการจากเว็บที่
+  // โหลดเสร็จทีหลัง (หรือเปลี่ยนตัวกรอง) จะเตะใบที่กำลังแต่งอยู่ทิ้งกลางคัน
+  const clips = SRC.shown.filter((l) => l.src === "yt" && !taken.has(l.uid) && !skipped.has(l.uid));
+  SRC.shown = [...clips, ...SRC.pool.filter((l) => (!from || l.from === from) && (!to || l.to === to))];
   SRC.cursor = 0;
   SRC.page = 0;
   drawZones();
@@ -452,6 +455,7 @@ async function showCurrent() {
     $("s-title").textContent = "ไม่มีใบให้ดูแล้ว";
     $("s-meta").textContent = "เปลี่ยนตัวกรองด้านบนเพื่อดูชุดอื่น";
     SRC.steps = []; SRC.marks = [];
+    if (window.showVideo) showVideo(null);
     const canvas = $("sheet");
     canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
     return;
@@ -461,7 +465,7 @@ async function showCurrent() {
   $("s-title").textContent = lineup.t || "(ไม่มีชื่อ)";
   $("s-meta").textContent =
     [lineup.m, lineup.side === "defense" ? "ตั้งรับ" : "บุก", `จุด ${lineup.st || "—"}`,
-     lineup.ab || "—", `${lineup.n || 1} ขั้น`, sourceName(lineup)].join("   ") +
+     lineup.ab || "—", lineup.video ? "วิดีโอ" : `${lineup.n || 1} ขั้น`, sourceName(lineup)].join("   ") +
     (lineup.d || lineup.desc ? `\n${lineup.d || lineup.desc}` : "") +
     (known ? "" : "\n⚠ แมพนี้ไม่มีในคลังเรา เก็บไม่ได้");
 
@@ -471,6 +475,7 @@ async function showCurrent() {
   const site = String(lineup.st || "").toLowerCase();
   $("s-destsite").value = STATE.sites.includes(site) ? site : "a";
   if (STATE.agents.some((a) => a.id === lineup.a)) $("s-destagent").value = lineup.a;
+  fillSourceAbility(lineup.ab);
   updateSourceDest();
 
   SRC.marks = Array.from({ length: lineup.n || 1 }, () => []);
@@ -483,6 +488,15 @@ async function showCurrent() {
   SRC.pinPending = null;
   SRC.autoPinned = false;
   loadSourceMap(lineup);
+  // ใบวิดีโอ (วางลิงก์คลิป) — ฝั่งซ้ายเป็นหน้าทำวิดีโอแทนแผ่นจัดรูป (video.js)
+  if (window.showVideo && showVideo(lineup)) return;
+  // ใบจากคลิป YouTube ไม่มีขั้นสำเร็จรูป — ผู้ใช้เลือกเฟรมเองจากแถบเฟรม (clip.js)
+  if (window.showClipFrames && showClipFrames(lineup)) {
+    autoLayout();
+    drawSheet();
+    syncPanelButtons();
+    return;
+  }
   $("s-loading").hidden = false;
   await loadSteps(lineup);
   $("s-loading").hidden = true;
@@ -522,11 +536,20 @@ async function loadSteps(lineup) {
   }
 }
 
+/** ช่องสกิลตามตัวละครที่เลือก · ค่าว่าง = ให้เซิร์ฟเวอร์เดาจากชื่อสกิลของเว็บต้นทาง (ability_tag)
+ *  ``guess`` ที่ตรงกับแท็กของเราอยู่แล้ว (ใบจากคลิปเดาไว้ให้) ตั้งไว้ก่อนเลย */
+function fillSourceAbility(guess) {
+  const options = abilityOptions($("s-destagent").value);
+  const keep = options.some(([id]) => id === guess) ? guess : "";
+  fill($("s-destability"), options, { blank: "— เดาจากชื่อ —", value: keep });
+}
+
 function updateSourceDest() {
   const name = $("s-name").value.trim() || "ชื่อ";
+  const lineup = currentSource();
   $("s-dest").textContent =
     `lineups/${$("s-destmap").value}/${$("s-destside").value}/${$("s-destagent").value}/` +
-    `${$("s-destsite").value.toUpperCase()}/${name}.png`;
+    `${$("s-destsite").value.toUpperCase()}/${name}.${lineup && lineup.video ? "webp" : "png"}`;
 }
 
 /* ---------- แผนที่ + จิ้มหมุด (จิ้มได้เลยก่อนเก็บ ไม่ต้องไปตามจิ้มทีหลัง) ---------- */
@@ -541,6 +564,7 @@ async function loadSourceMap(lineup) {
   try {
     extras = await api(`map-extras?map=${encodeURIComponent(map_)}&side=${$("s-destside").value}`);
   } catch { /* ไม่มีชื่อโซนก็จิ้มได้ตามปกติ */ }
+  faceSide(SRC.map, map_, $("s-destside").value, extras);
   // หมุดของใบที่มีอยู่แล้วในคลัง แมพ/ฝั่งเดียวกัน — ไว้เทียบว่าจุดยืนนี้เคยมีท่าอื่นไหม
   const others = STATE.lineups
     .filter((o) => o.map === map_ && o.side === $("s-destside").value && o.pin && o.pin.from)
@@ -611,18 +635,33 @@ async function skipCurrent() {
 async function takeCurrent() {
   const lineup = currentSource();
   if (!lineup) return;
-  if (!SRC.steps.some((img) => img)) { toastSource("รูปยังโหลดไม่เสร็จ", "warn"); return; }
+  // ใบวิดีโอ — ส่งแผนตัดต่อไปให้เซิร์ฟเวอร์ทำภาพเคลื่อนไหว (video.js) ไม่มีแผ่นรูป
+  const plan = window.videoPlanFor ? videoPlanFor(lineup) : null;
+  if (plan === false) return;
+  // ใบจากคลิปที่ติ๊ก "เก็บแค่ภาพเคลื่อนไหว" ไม่ต้องมีแผ่นรูป — ต้องมีช่วง GIF แทน (clip.js)
+  const animOnly = !plan && !!(window.clipAnimOnly && clipAnimOnly(lineup));
+  if (animOnly && !clipGifFor(lineup)) { toastSource("ตั้งช่วงภาพเคลื่อนไหวก่อน (✨ หาช่วงยิงให้ หรือ ตั้งเอง)", "warn"); return; }
+  if (!plan && !animOnly && !SRC.steps.some((img) => img)) { toastSource("รูปยังโหลดไม่เสร็จ", "warn"); return; }
   const wasAuto = SRC.autoPinned;   // จำไว้ก่อน เดี๋ยว showCurrent() ข้างล่างล้างทิ้ง
-  drawSheet(false);            // วาดใหม่แบบไม่มีจุดจับ/กรอบไข่ปลา ไม่ให้ติดไปในไฟล์จริง
-  const data = $("sheet").toDataURL("image/png");
-  drawSheet();                 // แล้ววาดกลับเป็นแบบมีจุดจับให้ดูต่อบนจอ
+  let data = "";
+  if (plan) toastSource("กำลังทำภาพเคลื่อนไหว… (ไม่กี่วินาที)", "info");
+  if (!plan && !animOnly) {
+    drawSheet(false);          // วาดใหม่แบบไม่มีจุดจับ/กรอบไข่ปลา ไม่ให้ติดไปในไฟล์จริง
+    data = $("sheet").toDataURL("image/png");
+    drawSheet();               // แล้ววาดกลับเป็นแบบมีจุดจับให้ดูต่อบนจอ
+  }
   try {
     const result = await api("source/take", {
       uid: lineup.uid, data,
       name: $("s-name").value.trim(),
       map: $("s-destmap").value, side: $("s-destside").value,
       site: $("s-destsite").value, agent: $("s-destagent").value,
+      ability: $("s-destability").value || undefined,
       pin: SRC.pin,
+      gif: !plan && window.clipGifFor ? clipGifFor(lineup) : null,   // ใบจากคลิปที่ตั้งช่วง GIF ไว้ (clip.js)
+      animOnly,
+      plan: plan || undefined,
+      howto: plan ? $("s-howto").value.trim() : undefined,
     });
     SRC.decided.taken[lineup.uid] = result.rel;
     SRC.shown.splice(SRC.cursor, 1);
@@ -813,7 +852,8 @@ async function bulkTake() {
     toastSource(`มี ${bad.length} ใบที่แมพไม่มีในคลังเรา — เอาติ๊กออกก่อน`, "err");
     return;
   }
-  if (!confirm(`เก็บ ${picked.length} ใบเข้าคลังเลยไหม (ต่อรูปให้อัตโนมัติ ไม่ได้แต่ง)`)) return;
+  if (!(await uiConfirm("ต่อรูปให้อัตโนมัติ ไม่ได้แต่ง",
+                        { title: `เก็บ ${picked.length} ใบเข้าคลังเลยไหม?`, ok: "เก็บเข้าคลัง" }))) return;
 
   SRC.stopBulk = false;
   const bar = $("s-bulkbar");
@@ -911,6 +951,8 @@ async function loadZoneMap() {
   try {
     extras = await api(`map-extras?map=${encodeURIComponent(map_)}`);
   } catch { /* ไม่มีชื่อโซนก็ยังกรองจาก dropdown ได้ */ }
+  SRC.zextras = extras;
+  faceSide(SRC.zmap, map_, $("s-side").value, extras);
   SRC.zones = (extras.callouts || []).map((c) => ({ label: c.label, xy: c.xy, count: 0 }));
   SRC.zmap.setData({ labels: extras.labels || {}, callouts: [], pins: [] });
   drawZones();
@@ -1017,9 +1059,9 @@ function wireSource() {
     button.addEventListener("click", async () => {
       for (const other of document.querySelectorAll(".tab")) other.classList.toggle("on", other === button);
       const which = button.dataset.tab;
-      $("tab-library").hidden = which !== "library";
-      $("tab-source").hidden = which !== "source";
-      $("tab-settings").hidden = which !== "settings";
+      for (const other of document.querySelectorAll(".tab")) {
+        $(`tab-${other.dataset.tab}`).hidden = other.dataset.tab !== which;
+      }
       if (which === "source" && !SRC.loaded) {
         let remembered = "1";
         try { remembered = localStorage.getItem("lm-source-grid") ?? "1"; } catch { /* โหมดเริ่มต้น */ }
@@ -1030,6 +1072,10 @@ function wireSource() {
     });
   }
 
+  // เลือกฝั่งในตัวกรอง = แผนที่กรองหันตามฝั่งนั้นด้วย (จุดเกิดฝั่งนั้นอยู่ล่าง)
+  $("s-side").addEventListener("change", () => {
+    if (SRC.zmap && SRC.zextras) faceSide(SRC.zmap, $("s-map").value, $("s-side").value, SRC.zextras);
+  });
   for (const id of ["s-side", "s-site", "s-ability", "s-from", "s-to",
                     "s-steps", "s-diff", "s-src", "s-owned"]) {
     $(id).addEventListener("change", refilterSource);
@@ -1089,6 +1135,7 @@ function wireSource() {
   for (const id of ["s-name", "s-destmap", "s-destside", "s-destsite", "s-destagent"]) {
     $(id).addEventListener("input", updateSourceDest);
   }
+  $("s-destagent").addEventListener("change", () => fillSourceAbility($("s-destability").value));
   SRC.map = createMapView($("src-mapstage"), { onPick: onSourcePick });
   wireMapBar($("s-pinbox").querySelector(".mapbar"), SRC.map);
   $("s-pinundo").addEventListener("click", () => { SRC.pinPending = null; drawSourcePin(); });
@@ -1162,11 +1209,12 @@ function wireSource() {
     canvas.setPointerCapture(event.pointerId);
     const size = +$("s-width").value;
     if (SRC.tool === "text") {
-      const text = prompt("พิมพ์ข้อความที่จะเขียนลงรูป");
-      if (text) {
-        SRC.marks[spot.index].push({ kind: "text", pts: [spot.point], text, color: SRC.color, size });
-        drawSheet();
-      }
+      uiPrompt("พิมพ์ข้อความที่จะเขียนลงรูป", { title: "ตัวหนังสือบนรูป", ok: "ใส่" }).then((text) => {
+        if (text && text.trim()) {
+          SRC.marks[spot.index].push({ kind: "text", pts: [spot.point], text: text.trim(), color: SRC.color, size });
+          drawSheet();
+        }
+      });
       return;
     }
     SRC.drawing = { index: spot.index, mark: { kind: SRC.tool, pts: [spot.point], color: SRC.color, size } };

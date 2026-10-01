@@ -51,10 +51,10 @@ from PySide6.QtWidgets import (  # noqa: E402
 )
 
 from lineupmaster import callouts as callout_mod  # noqa: E402
-from lineupmaster.paths import ROOT  # noqa: E402
+from lineupmaster.paths import ASSETS, ROOT  # noqa: E402
 from _shared import STYLE, ImagePane, MapPane  # noqa: E402
 
-REFERENCE_DIR = ROOT / "assets" / "callout_reference"
+REFERENCE_DIR = ASSETS / "callout_reference"
 
 
 class CalloutEditor(QWidget):

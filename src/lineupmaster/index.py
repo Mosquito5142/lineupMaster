@@ -42,10 +42,17 @@ class Lineup:
     site: str | None = None         # "a" | "b" | "c" — จุดยิง มาจากชื่อโฟลเดอร์
     note: str = ""
     gif: Path | None = None         # คลิปวิถีลูกชื่อเดียวกัน (ถ้ามี) ดูได้ตอนซูม
+    animated: bool = False          # ตัวไลน์อัพเองเป็นภาพเคลื่อนไหว (gif/webp เคลื่อนไหวล้วน) — ซูมแล้วเล่นเลย
     # แท็กที่ไม่ได้มาจาก path — เติมทีหลังจาก meta.json (ดู meta.apply)
     fav: bool = False               # "ไม้ตาย" ที่ใช้จริงประจำ
     tags: list[str] = field(default_factory=list)   # anti-cypher, post-plant, ...
     drilled: int = 0                # ซ้อมในห้องคัสตอมไปกี่ครั้งแล้ว
+    flag: bool = False              # ⚑ แจ้งผิดระหว่างเล่น (F8) — รอไปแก้ในหน้าเว็บ
+    cid: str | None = None          # id บนคอมมูนิตี้ (เอาเข้าคลังมาจากเพื่อน)
+    vote: int = 0                   # โหวตของเรา +1 ใช้ได้จริง (F7) / -1 ใช้ไม่ได้ (F8)
+    score: tuple[int, int] | None = None   # (ใช้ได้, ใช้ไม่ได้) ของทุกคน จากแคชที่หน้าเว็บดึงมา
+    howto: str = ""                 # วิธียิงที่เสียงพูดอ่าน (meta.json) — คนละช่องกับ note ที่เป็นชื่อบนจอ
+    howto_ai: bool = False          # ร่างโดย Claude ยังไม่ได้ตรวจ
 
     @property
     def title(self) -> str:
@@ -71,6 +78,26 @@ def _read_note(image: Path) -> str:
             except OSError:
                 return ""
     return ""
+
+
+def is_animated(path: Path) -> bool:
+    """ไฟล์นี้เป็นภาพเคลื่อนไหวไหม — gif ทุกไฟล์ · webp ดูธง "animation" ในหัวไฟล์ (VP8X ไบต์ 20 บิต 0x02).
+
+    อ่านแค่ 21 ไบต์แรก ไม่ต้องเปิดทั้งรูป — สแกนคลังหลายร้อยใบทุกครั้งที่กดปุ่มในเกมก็ยังเร็ว
+    ไลน์อัพที่เก็บเป็นภาพเคลื่อนไหวล้วน (ไม่มีรูปนิ่ง) มาจาก "เก็บแค่ภาพเคลื่อนไหว" ตอนนำเข้าจากคลิป
+    """
+    suffix = path.suffix.lower()
+    if suffix == ".gif":
+        return True
+    if suffix != ".webp":
+        return False
+    try:
+        with path.open("rb") as handle:
+            head = handle.read(21)
+    except OSError:
+        return False
+    return (len(head) == 21 and head[:4] == b"RIFF" and head[8:12] == b"WEBP"
+            and head[12:16] == b"VP8X" and bool(head[20] & 0x02))
 
 
 def _paired_gif(image: Path) -> Path | None:
@@ -239,6 +266,7 @@ def scan(root: Path, aliases: dict) -> list[Lineup]:
                     site=site,
                     note=_read_note(image),
                     gif=_paired_gif(image),
+                    animated=is_animated(image),
                     **tags,
                 )
             )

@@ -38,7 +38,7 @@ class SettingsTest(unittest.TestCase):
     def test_new_defaults_keep_old_behaviour(self) -> None:
         cfg = config_mod.load(self.root)
         self.assertEqual(cfg.raw["match"], {"cutoff": callout_mod.MATCH_CUTOFF, "margin": 0.05})
-        self.assertEqual(cfg.raw["map"], {"near_first": True, "dim_others": True, "ring_group": 2.0})
+        self.assertEqual(cfg.raw["map"], {"near_first": True, "dim_others": True, "face_side": True, "ring_group": 2.0})
 
     def test_set_clamps_and_rejects_wrong_type(self) -> None:
         self.assertEqual(settings_mod.set_value(self.root, "auto.confirm", 99), 5)

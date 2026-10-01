@@ -9,7 +9,7 @@
 **ข้ามรูปที่เคยตรวจแล้ว** (``done.json`` ที่ apply_review.py เขียนไว้) — โหลดแมพใหม่เพิ่มทีหลังแล้วรันซ้ำได้
 ของรอบก่อนที่ยังค้างในโฟลเดอร์ (input/out) ถูกย้ายเข้า ``archive-<เวลา>/`` ไม่ทับกัน
 
-    python tools/review_prepare.py --root dist/LineupMaster --agent viper [--maps ascent,bind]
+    python tools/review_prepare.py --root dist/LineupMaster/data --agent viper [--maps ascent,bind]
 """
 
 from __future__ import annotations

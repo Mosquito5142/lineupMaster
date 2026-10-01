@@ -13,7 +13,7 @@ from PySide6.QtCore import QPointF, QRect, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QIcon, QImageReader, QPainter, QPen, QPixmap, QTransform
 from PySide6.QtWidgets import QWidget
 
-from lineupmaster.paths import ROOT
+from lineupmaster.paths import ASSETS, ROOT
 
 THUMB = QSize(190, 110)
 
@@ -258,7 +258,7 @@ class MapPane(QWidget):
         self._map_raw = None
         self._message = ""
         if name is not None:
-            path = ROOT / "assets" / "maps" / f"{name}.png"
+            path = ASSETS / "maps" / f"{name}.png"
             if not path.is_file():
                 self._message = f"ไม่มีรูปแผนที่ {name}\nรัน: python tools/fetch_maps.py"
             else:

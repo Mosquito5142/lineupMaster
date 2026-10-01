@@ -4,7 +4,13 @@
 ``positions.json`` และ ``last-view.json`` เป๊ะ::
 
     {"ascent/attack/sova/A/A main.png":
-        {"ability": "recon", "fav": true, "tags": ["anti-cypher"], "drilled": 3}}
+        {"ability": "recon", "fav": true, "tags": ["anti-cypher"], "drilled": 3, "flag": true}}
+
+``flag`` = กด F8 "แจ้งผิด" ระหว่างเล่น (โปรแกรมหลักเขียน) — ไปแก้แล้วติ๊กออกในหน้าเว็บ
+``cid`` = id ของใบนี้บนคอมมูนิตี้ (เอาเข้าคลังมาจากเพื่อน) · ``vote`` = +1 ใช้ได้จริง (F7) / -1 ใช้ไม่ได้
+(F8 บนใบคอมมูนิตี้) รอหน้าเว็บส่งขึ้นเซิร์ฟเวอร์ (ดู community.py)
+``howto`` = วิธียิงสั้นๆ ที่เสียงพูดอ่านต่อท้ายชื่อ (voice.py) · ``howto_ai`` = ร่างจากรูปโดย Claude
+ยังไม่ได้ตรวจ (tools/howto_batch.py) — แก้/กดยืนยันในหน้าเว็บแล้วธงนี้หาย
 
 **ทำไมไม่เก็บไว้ในชื่อไฟล์** ทั้งที่ปรัชญาของโปรเจกต์คือ "แท็กมาจาก path": ดาวไม้ตายกับจำนวน
 ครั้งที่ซ้อมเป็นค่าที่เปลี่ยนตลอดเวลา ถ้าผูกกับชื่อไฟล์ต้องเปลี่ยนชื่อไฟล์ทุกครั้งที่กดดาว และ
@@ -21,7 +27,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-FIELDS = ("ability", "fav", "tags", "drilled")
+FIELDS = ("ability", "fav", "tags", "drilled", "flag", "cid", "vote", "howto", "howto_ai")
 
 
 def load(path: Path) -> dict[str, dict]:
@@ -43,6 +49,16 @@ def load(path: Path) -> dict[str, dict]:
             clean["ability"] = ability.strip().lower()
         if entry.get("fav") is True:
             clean["fav"] = True
+        if entry.get("flag") is True:
+            clean["flag"] = True
+        if isinstance(entry.get("cid"), str) and entry["cid"]:
+            clean["cid"] = entry["cid"]
+        if entry.get("vote") in (1, -1):
+            clean["vote"] = entry["vote"]
+        if isinstance(entry.get("howto"), str) and entry["howto"].strip():
+            clean["howto"] = entry["howto"].strip()
+            if entry.get("howto_ai") is True:
+                clean["howto_ai"] = True
         tags = entry.get("tags")
         if isinstance(tags, list):
             good = [str(t).strip().lower() for t in tags if str(t).strip()]
@@ -109,9 +125,19 @@ def apply(data: dict, lineups) -> None:
             lu.fav = False
             lu.tags = []
             lu.drilled = 0
+            lu.flag = False
+            lu.cid = None
+            lu.vote = 0
+            lu.howto = ""
+            lu.howto_ai = False
             continue
         if lu.ability is None and found.get("ability"):
             lu.ability = found["ability"]
         lu.fav = bool(found.get("fav"))
         lu.tags = list(found.get("tags") or [])
         lu.drilled = int(found.get("drilled") or 0)
+        lu.flag = bool(found.get("flag"))
+        lu.cid = found.get("cid")
+        lu.vote = int(found.get("vote") or 0)
+        lu.howto = str(found.get("howto") or "")
+        lu.howto_ai = bool(found.get("howto_ai"))

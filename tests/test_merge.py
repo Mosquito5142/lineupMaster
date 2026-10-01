@@ -1155,3 +1155,20 @@ class MergeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MergeHowtoTest(unittest.TestCase):
+    """วิธียิง (เสียงพูด) ต้องตามมาตอนรวมคลัง — ตรวจแล้วชนะร่าง AI."""
+
+    def test_takes_theirs_when_missing(self) -> None:
+        out, _ = merge._merge_meta_entry({"fav": True}, {"howto": "ยืน…", "howto_ai": True})
+        self.assertEqual((out["howto"], out.get("howto_ai")), ("ยืน…", True))
+
+    def test_checked_beats_ai_draft(self) -> None:
+        out, _ = merge._merge_meta_entry({"howto": "ร่าง", "howto_ai": True}, {"howto": "ตรวจแล้ว"})
+        self.assertEqual(out["howto"], "ตรวจแล้ว")
+        self.assertNotIn("howto_ai", out)
+
+    def test_keeps_mine_when_checked(self) -> None:
+        out, _ = merge._merge_meta_entry({"howto": "ของเรา"}, {"howto": "ร่าง", "howto_ai": True})
+        self.assertEqual(out["howto"], "ของเรา")

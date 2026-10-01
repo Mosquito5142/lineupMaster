@@ -27,7 +27,7 @@ _HERE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_HERE / "src"))
 
 from lineupmaster import config as config_mod  # noqa: E402
-from lineupmaster.paths import ROOT  # noqa: E402
+from lineupmaster.paths import APP, ASSETS, ROOT  # noqa: E402
 
 API_URL = "https://valorant-api.com/v1/maps"
 TIMEOUT = 30
@@ -67,7 +67,7 @@ def main() -> int:
         print(f"ดึงข้อมูลไม่สำเร็จ: {exc}")
         return 1
 
-    out_dir = ROOT / "assets" / "maps"
+    out_dir = ASSETS / "maps"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     saved, skipped, missing = [], [], []
@@ -95,7 +95,7 @@ def main() -> int:
             missing.append(name)
             continue
         saved.append(name)
-        print(f"  เก็บแล้ว: {target.relative_to(ROOT)}")
+        print(f"  เก็บแล้ว: {target.relative_to(APP)}")
 
     if skipped:
         print(f"\nมีอยู่แล้ว {len(skipped)} แมพ (ใช้ --force ถ้าอยากโหลดทับ): {', '.join(sorted(skipped))}")
