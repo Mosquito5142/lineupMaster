@@ -35,7 +35,7 @@ import webbrowser
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 _HERE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_HERE / "src"))
@@ -82,6 +82,20 @@ HOST = "127.0.0.1"          # เปิดให้เฉพาะเครื�
 # (รูปในคลังเป็น .webp หลังกด "ย่อขนาดรูปทั้งคลัง")
 mimetypes.add_type("image/webp", ".webp")
 PORT_RANGE = range(8760, 8800)
+
+# tracker.gg (lineup_sources.py · "tg") โหลดจาก Python ตรงๆ ไม่ได้ (เว็บกันบอต 403) — bookmarklet ในเบราว์เซอร์
+# ผู้ใช้ดึงรายการแล้วส่งมาที่ /api/tracker/push · ตอบ CORS เฉพาะสองเว็บนี้ และต้องมีรหัสลับถาวรของ bookmarklet
+TRACKER_ORIGINS = ("https://tracker.gg", "https://www.tracker.gg")
+TRACKER_MAX_BODY = 64 * 1024 * 1024         # ตัวละครที่มีไลน์อัพเยอะสุด (900+ ใบ) ก็แค่ไม่กี่ MB
+
+
+def tracker_bookmarklet() -> str:
+    """ลิงก์ ``javascript:`` ของ bookmarklet "ส่งเข้า LineupMaster" — ฝังรหัสลับ + ช่วงพอร์ตที่เซิร์ฟเวอร์อาจอยู่."""
+    code = (WEB_DIR / "bookmarklet.js").read_text(encoding="utf-8")
+    code = (code.replace("__KEY__", source_mod.tg_key())
+                .replace("__PORT_FIRST__", str(PORT_RANGE.start))
+                .replace("__PORT_LAST__", str(PORT_RANGE.stop - 1)))
+    return "javascript:" + quote(code, safe="")
 
 
 def _mtime(path: Path) -> float | None:
@@ -618,6 +632,11 @@ class SourceBrowser:
             self._mark_pins()
             return self._catalog
 
+    def reset_catalog(self) -> None:
+        """ทิ้งแคตตาล็อกในหน่วยความจำ — ครั้งหน้าที่ถามจะอ่านใหม่ (ใช้หลัง bookmarklet ส่งรายการเข้ามา)."""
+        with self.lock:
+            self._catalog = []
+
     def _mark_pins(self) -> None:
         """ติดป้ายให้ทุกใบว่าปักหมุดอัตโนมัติได้แค่ไหน — ตารางจะได้โชว์ก่อนกดเอา.
 
@@ -680,15 +699,36 @@ class SourceBrowser:
     def video_open(self, link: str, aliases: dict) -> dict:
         """ลิงก์คลิป → โหลดช่วงของท่านั้นมาไว้ในเครื่อง (proxy.mp4) + ข้อมูลที่หน้าทำวิดีโอต้องใช้."""
         clip = clipgrab.open_video(link, ROOT, aliases)
-        entry = self._clip_entry(clip, video=True)
+        return self._video_payload(self._clip_entry(clip, video=True), clip)
+
+    @staticmethod
+    def _video_payload(entry: dict, clip: clipgrab.Clip, howto: str = "") -> dict:
         return {
             "entry": entry, "start": clip.start, "end": clip.end,
             "offset": clip.proxy_offset, "fps": clip.fps, "max": clipgrab.GIF_MAX,
             "motion": {"times": clip.motion_times, "values": clip.motion},
             "plan": clipgrab.video_plan(clip),
             "suggest": clipgrab.suggest_plan(clip.coarse_times, clip.coarse, clip.start, clip.end),
-            "subs": clip.subs,
+            "subs": clip.subs, "howto": howto,
         }
+
+    def video_open_entry(self, uid: str) -> dict:
+        """ใบของเว็บที่มีสตรีมวิดีโอ (tracker.gg) → โหลดมาไว้ในเครื่อง แล้วเปิดในหน้าทำวิดีโอ.
+
+        ใบยังเป็นใบเดิมในแคตตาล็อก (uid ``tg:…`` เดิม) — เก็บเข้าคลังแล้วจึงขึ้นว่า "เอาแล้ว" ถูกใบ
+        คำอธิบายของเว็บใส่ช่อง "วิธียิง" ให้แก้ต่อได้ · พิกัด tracker.gg ยังไม่แปลงเป็นหมุด (จิ้มเอง)
+        """
+        entry = self.find(str(uid))
+        if entry is None or entry.get("src") != "tg" or not entry.get("video"):
+            raise KeyError("ไม่เจอใบนี้ หรือใบนี้ไม่มีวิดีโอ")
+        with self._gate(entry["uid"]):
+            key = "tg-" + re.sub(r"[^A-Za-z0-9_-]", "-", str(entry["i"]))[:56]
+            clip = clipgrab.open_stream(
+                source_mod.tg_stream_url(entry["video"]), ROOT, key, title=entry["t"],
+                side=entry["side"], site=(entry["st"] or "").lower() or None,
+                map_=entry["m"], agent=entry["a"])
+        self._clips[entry["uid"]] = (entry, clip)
+        return self._video_payload(entry, clip, howto=entry.get("desc") or "")
 
     def video_file(self, uid: str) -> Path | None:
         found = self._clips.get(uid)
@@ -927,6 +967,7 @@ class Handler(BaseHTTPRequestHandler):
         self.source = source
         self.token = token
         self.community = community or CommunityWeb(store, ROOT)
+        self._cors: dict[str, str] = {}
         super().__init__(*args, **kwargs)
 
     # -- ตัวช่วยตอบกลับ ---------------------------------------------------
@@ -935,6 +976,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "max-age=86400" if cache else "no-store")
+        for name, value in self._cors.items():
+            self.send_header(name, value)
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
@@ -997,6 +1040,55 @@ class Handler(BaseHTTPRequestHandler):
         self._fail("token ไม่ถูกต้อง — เปิดหน้านี้จากลิงก์ที่โปรแกรมเปิดให้เท่านั้น", 403)
         return False
 
+    # -- tracker.gg: bookmarklet ในเบราว์เซอร์ของผู้ใช้ส่งรายการเข้ามา ------------------
+    # ไม่ใช้ token หน้าเว็บ (เปลี่ยนทุกรอบ) แต่ใช้รหัสถาวรของ bookmarklet (?k=) + จำกัด Origin ให้ tracker.gg
+    def _tracker_gate(self, query: dict) -> bool:
+        origin = self.headers.get("Origin", "")
+        if origin and origin not in TRACKER_ORIGINS:
+            self._fail("ไม่รับคำขอจากเว็บนี้", 403)
+            return False
+        if not secrets.compare_digest((query.get("k") or [""])[0], source_mod.tg_key()):
+            self._fail("รหัสไม่ถูกต้อง — ติดตั้ง bookmarklet ใหม่จากหน้าตั้งค่า", 403)
+            return False
+        if origin:
+            self._cors = {
+                "Access-Control-Allow-Origin": origin, "Vary": "Origin",
+                "Access-Control-Allow-Private-Network": "true",
+                "Access-Control-Allow-Local-Network": "true",
+            }
+        return True
+
+    def do_OPTIONS(self) -> None:  # noqa: N802 - http.server API
+        """preflight ของเบราว์เซอร์ (รวมการขออนุญาตเข้าเครือข่ายภายใน) — ตอบเฉพาะเส้นทาง tracker จาก tracker.gg."""
+        origin = self.headers.get("Origin", "")
+        if not urlparse(self.path).path.startswith("/api/tracker/") or origin not in TRACKER_ORIGINS:
+            self._fail("ไม่มีเส้นทางนี้", 404)
+            return
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", origin)
+        self.send_header("Vary", "Origin")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Private-Network", "true")
+        self.send_header("Access-Control-Allow-Local-Network", "true")
+        self.send_header("Access-Control-Max-Age", "600")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _tracker_push(self) -> None:
+        length = int(self.headers.get("Content-Length") or 0)
+        if not 0 < length <= TRACKER_MAX_BODY:
+            self._fail("ข้อมูลที่ส่งมาว่างหรือใหญ่เกินไป", 413)
+            return
+        try:
+            body = json.loads(self.rfile.read(length).decode("utf-8"))
+            count = source_mod.tg_store(str(body.get("agent") or ""), body.get("items") or [])
+        except (ValueError, AttributeError, TypeError) as error:
+            self._fail(error)
+            return
+        self.source.reset_catalog()
+        self._json({"ok": True, "agent": source_mod.tg_slug(body["agent"]), "count": count})
+
     def _body(self) -> dict:
         length = int(self.headers.get("Content-Length") or 0)
         if not length:
@@ -1008,6 +1100,11 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         route = parsed.path
         query = parse_qs(parsed.query)
+
+        if route == "/api/tracker/ping":
+            if self._tracker_gate(query):
+                self._json({"ok": True, "app": "LineupMaster"})
+            return
 
         if route == "/community/callback":
             # Supabase เด้งกลับมาหลังกดยืนยันใน Discord — ?t= ติดมากับ redirect_to ที่เราส่งไปเอง
@@ -1084,6 +1181,10 @@ class Handler(BaseHTTPRequestHandler):
         if not parsed.path.startswith("/api/"):
             self._fail("ไม่มีเส้นทางนี้", 404)
             return
+        if parsed.path == "/api/tracker/push":
+            if self._tracker_gate(query):
+                self._tracker_push()
+            return
         if not self._guard(query):
             return
         try:
@@ -1122,7 +1223,12 @@ class Handler(BaseHTTPRequestHandler):
                 return
         if parsed.path == "/api/video/open":            # ต่อเน็ต + โหลดคลิป ~10 วิ — ไม่ถือล็อก
             try:
-                self._json(self.source.video_open(str(body.get("link") or ""), self.store.cfg.aliases))
+                if body.get("uid"):
+                    self._json(self.source.video_open_entry(str(body["uid"])))
+                else:
+                    self._json(self.source.video_open(str(body.get("link") or ""), self.store.cfg.aliases))
+            except KeyError as error:
+                self._fail(error, 404)
             except (ValueError, OSError) as error:
                 self._fail(error)
             return
@@ -1301,10 +1407,14 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._send(200, path.read_bytes(), "image/jpeg", cache=True)
             return
+        if route == "/api/tracker/status":
+            self._json({"agents": source_mod.tg_status(), "bookmarklet": tracker_bookmarklet()})
+            return
         if route == "/api/source/catalog":
             force = (query.get("force") or [""])[0] == "1"
             self._json({"lineups": self.source.catalog(force=force),
                         "decisions": self.source.decisions(),
+                        "tracker": max((a["saved"] for a in source_mod.tg_status()), default=0),
                         "sources": [{"id": s.key, "name": s.name, "site": s.site}
                                     for s in source_mod.SOURCES.values()]})
             return

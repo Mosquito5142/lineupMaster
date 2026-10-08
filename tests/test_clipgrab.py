@@ -253,5 +253,47 @@ class VideoTest(unittest.TestCase):
             self.assertTrue(new.exists() and keep.exists())
 
 
+class StreamTest(unittest.TestCase):
+    """open_stream (สตรีม HLS ของ tracker.gg) — แทนส่วนที่ต้องใช้ PyAV/เน็ตด้วยของปลอม."""
+
+    def setUp(self) -> None:
+        import tempfile
+        from unittest import mock
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.urls: list[str] = []
+
+        def remux(url, target):
+            self.urls.append(url)
+            target.write_bytes(b"mp4")
+
+        def measure(clip):
+            clip.motion_times, clip.motion = [0.0, 0.1], [0.0, 2.0]
+            clip.coarse_times, clip.coarse = [0.0, 0.5], [1.0]
+
+        for name, fake in (("_remux_stream", remux), ("_proxy_duration", lambda _p: 14.5), ("measure", measure)):
+            patcher = mock.patch.object(clipgrab, name, fake)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_opens_once_and_reuses_cache(self) -> None:
+        kwargs = dict(title="A Main", side="attack", site="a", map_="ascent", agent="sova")
+        clip = clipgrab.open_stream("https://x/y.m3u8", self.root, "tg-1", **kwargs)
+        self.assertEqual((clip.start, clip.end, clip.proxy_offset), (0.0, 14.5, 0.0))
+        self.assertEqual((clip.map, clip.agent, clip.side, clip.site), ("ascent", "sova", "attack", "a"))
+        self.assertTrue(clipgrab.proxy_path(clip).is_file())
+        self.assertEqual(clipgrab.video_plan(clip)["end"], 14.5)
+        again = clipgrab.open_stream("https://x/y.m3u8", self.root, "tg-1", **kwargs)
+        self.assertEqual(self.urls, ["https://x/y.m3u8"], "เปิดซ้ำไม่โหลดใหม่")
+        self.assertEqual(again.end, 14.5)
+
+    def test_rejects_unsafe_key(self) -> None:
+        for key in ("../evil", "a/b", ""):
+            with self.assertRaises(ValueError):
+                clipgrab.open_stream("https://x/y.m3u8", self.root, key, title="t")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -304,6 +304,7 @@ async function loadCatalog(force = false) {
   SRC.catalog = data.lineups;
   SRC.decided = data.decisions;
   SRC.sources = data.sources || [];
+  SRC.trackerStamp = data.tracker || 0;
   SRC.loaded = true;
   buildOwned();
   buildSourceFilters();
@@ -312,6 +313,15 @@ async function loadCatalog(force = false) {
     .map((s) => `${s.name} ${SRC.catalog.filter((l) => l.src === s.id).length.toLocaleString()}`)
     .join(" + ");
   toastSource(`ได้รายการมา ${SRC.catalog.length.toLocaleString()} ใบ (${per})`, "ok");
+}
+
+/** bookmarklet ส่งรายการ tracker.gg เข้ามาใหม่ตอนอยู่แท็บอื่น → อ่านแคตตาล็อกใหม่ (ไม่ถามเว็บอื่นซ้ำ) */
+async function refreshIfTrackerChanged() {
+  try {
+    const status = await api("tracker/status");
+    const stamp = Math.max(0, ...status.agents.map((a) => a.saved));
+    if (stamp !== (SRC.trackerStamp || 0)) await loadCatalog();
+  } catch { /* ถามไม่ได้ก็ใช้รายการเดิมต่อ */ }
 }
 
 /** คีย์เส้นทางของไลน์อัพหนึ่งใบ — ใช้เทียบว่าคลังเรามีท่าเดียวกันอยู่แล้วหรือยัง */
@@ -408,7 +418,7 @@ function refilterSource() {
   SRC.pool = SRC.catalog.filter((l) =>
     (!agent || l.a === agent) &&
     (!map_ || l.m === map_) &&
-    (!side || l.side === side) &&
+    (!side || l.side === side || l.both) &&         // both = ใช้ได้ทั้งสองฝั่ง (tracker.gg side "all")
     (!site || String(l.st || "").toUpperCase() === site) &&
     (!ability || l.ab === ability) &&
     (!source || l.src === source) &&
@@ -488,6 +498,11 @@ async function showCurrent() {
   SRC.pinPending = null;
   SRC.autoPinned = false;
   loadSourceMap(lineup);
+  // ใบจาก tracker.gg มีแต่วิดีโอ — โหลดคลิปมาเปิดในหน้าทำวิดีโอให้เอง (video.js) เสร็จแล้วมาเรียกตรงนี้ซ้ำ
+  if (lineup.src === "tg" && window.openEntryVideo && !window.hasVideo(lineup)) {
+    openEntryVideo(lineup);
+    return;
+  }
   // ใบวิดีโอ (วางลิงก์คลิป) — ฝั่งซ้ายเป็นหน้าทำวิดีโอแทนแผ่นจัดรูป (video.js)
   if (window.showVideo && showVideo(lineup)) return;
   // ใบจากคลิป YouTube ไม่มีขั้นสำเร็จรูป — ผู้ใช้เลือกเฟรมเองจากแถบเฟรม (clip.js)
@@ -806,7 +821,7 @@ function slotEl(className, text) {
 }
 
 /** ชื่อเว็บต้นทางแบบสั้น — ในตารางมีที่แค่ช่องเดียว ชื่อเต็มยาวเกิน */
-const sourceShort = (l) => (l.src === "vlp" ? "VLP" : l.src === "vc" ? "VC" : l.src || "");
+const sourceShort = (l) => (l.src === "vlp" ? "VLP" : l.src === "vc" ? "VC" : l.src === "tg" ? "TG" : l.src || "");
 
 function chipEl(className, text, title) {
   const node = document.createElement("span");
@@ -897,6 +912,7 @@ async function bulkTake() {
 
 /** ต่อรูปของใบนี้เป็นแผ่นเดียวแบบเงียบๆ — คืน data URL หรือ null ถ้าโหลดรูปไม่ขึ้นเลย */
 async function composeOne(lineup) {
+  if (lineup.src === "tg") return null;        // ใบวิดีโอ — ต้องตัดต่อทีละใบในโหมดทีละใบ ไม่มีรูปให้จัดหน้า
   await api(`source/prepare?uid=${encodeURIComponent(lineup.uid)}`);
   const count = lineup.n || 1;
   const loaded = await Promise.all(Array.from({ length: count }, (_, i) => new Promise((resolve) => {
@@ -1062,6 +1078,7 @@ function wireSource() {
       for (const other of document.querySelectorAll(".tab")) {
         $(`tab-${other.dataset.tab}`).hidden = other.dataset.tab !== which;
       }
+      if (which === "source" && SRC.loaded) refreshIfTrackerChanged();
       if (which === "source" && !SRC.loaded) {
         let remembered = "1";
         try { remembered = localStorage.getItem("lm-source-grid") ?? "1"; } catch { /* โหมดเริ่มต้น */ }

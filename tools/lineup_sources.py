@@ -221,6 +221,151 @@ def _steps_vc(entry: dict) -> list[str]:
     return [entry["img"]] if entry.get("img") else []
 
 
+# ------------------------------------------------------------------- tracker.gg
+#
+# tracker.gg ตอบ 403 ให้ทุกอย่างที่ไม่ใช่เบราว์เซอร์จริง (กันบอต) — **ห้ามพยายามเลี่ยง** รายการจึงโหลดเองจาก
+# Python ไม่ได้ ต้องให้ผู้ใช้กด bookmarklet "ส่งเข้า LineupMaster" บนหน้า tracker.gg ของตัวเอง แล้วมันดึงรายการ
+# ในเบราว์เซอร์นั้นส่งมาที่เซิร์ฟเวอร์หน้าจัดการ (tools/web_manage.py · /api/tracker/push) → เก็บเป็นไฟล์ใน
+# ``.cache/tracker/guides-<ตัวละคร>.json`` (ของดิบจากเว็บ) ตัวนี้แค่อ่านไฟล์พวกนั้นมาแปลงเป็นรูปแบบกลาง
+# วิดีโอ = Cloudflare Stream (HLS ~360p ยาว 10-30 วิ) ไม่มีรูปทีละขั้น จึงมี ``n = 0`` และ ``video`` เป็นรหัสสตรีม
+
+TG_SITE = "https://tracker.gg"
+TG_CACHE = _CACHE_ROOT / "tracker"
+TG_STREAM = "https://customer-9h7e8ahl6hivmjb6.cloudflarestream.com/{id}/manifest/video.m3u8"
+
+
+def tg_stream_url(video_id: str) -> str:
+    return TG_STREAM.format(id=video_id)
+
+
+def tg_key() -> str:
+    """รหัสลับถาวรที่ฝังใน bookmarklet — สุ่มครั้งแรกแล้วจำไว้ใน ``.cache/tracker/key.txt``.
+
+    เว็บอื่นในเครื่องผู้ใช้ยิงเข้ามาที่เซิร์ฟเวอร์ไม่ได้ถ้าไม่รู้รหัสนี้ (รหัสหน้าเว็บ ``?t=`` เปลี่ยนทุกรอบ
+    เลยใช้ฝังใน bookmarklet ไม่ได้ — ผู้ใช้ต้องมาติดตั้งใหม่ทุกครั้งที่เปิดโปรแกรม)
+    """
+    path = TG_CACHE / "key.txt"
+    try:
+        found = path.read_text(encoding="utf-8").strip()
+        if len(found) >= 16:
+            return found
+    except OSError:
+        pass
+    import secrets
+
+    key = secrets.token_urlsafe(24)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(key, encoding="utf-8")
+    return key
+
+
+_TG_KEEP = ("id", "urlSlug", "title", "description", "videoUrl", "previewImageUrl", "score", "views",
+            "dateCreated")
+_TG_ATTRS = ("map", "agent", "ability", "side", "location")
+
+
+def tg_clean(row: object) -> dict | None:
+    """เก็บเฉพาะฟิลด์ที่ใช้ (ข้อมูลมาจากเบราว์เซอร์ ไม่เชื่อรูปร่างมัน) — ไม่มี id/วิดีโอก็ทิ้ง."""
+    if not isinstance(row, dict) or row.get("id") is None or not row.get("videoUrl"):
+        return None
+    out: dict = {}
+    for name in _TG_KEEP:
+        value = row.get(name)
+        out[name] = value if isinstance(value, (int, float)) else str(value)[:2000] if value is not None else None
+    attrs = row.get("attributes") if isinstance(row.get("attributes"), dict) else {}
+    out["attributes"] = {name: str(attrs[name])[:100] for name in _TG_ATTRS if attrs.get(name) is not None}
+    return out
+
+
+def tg_slug(agent: str) -> str:
+    """ชื่อตัวละคร → ชื่อไฟล์ปลอดภัย (ผู้ส่งเป็นเบราว์เซอร์ ห้ามเชื่อชื่อไฟล์ตรงๆ)."""
+    return re.sub(r"[^a-z0-9]+", "-", str(agent or "").lower()).strip("-")[:32]
+
+
+def tg_store(agent: str, items: list) -> int:
+    """เก็บรายการของตัวละครนี้ (ทับของเดิมทั้งชุด — bookmarklet ส่งมาครบทุกหน้าเสมอ) · คืนจำนวนที่เก็บ."""
+    slug = tg_slug(agent)
+    if not slug:
+        raise ValueError("ไม่รู้ว่าเป็นตัวละครไหน")
+    items = [row for row in map(tg_clean, items) if row]
+    if not items:
+        raise ValueError("ไม่มีไลน์อัพที่มีวิดีโอในข้อมูลที่ส่งมา")
+    path = TG_CACHE / f"guides-{slug}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(path.name + ".part")
+    temp.write_text(json.dumps({"agent": slug, "saved": int(time.time()), "items": items},
+                               ensure_ascii=False), encoding="utf-8")
+    temp.replace(path)
+    return len(items)
+
+
+def tg_status() -> list[dict]:
+    """ตัวละครที่เคยส่งเข้ามา + จำนวน + เวลาที่ส่งล่าสุด — ไว้โชว์ในหน้าตั้งค่า."""
+    out = []
+    for path in sorted(TG_CACHE.glob("guides-*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            out.append({"agent": data.get("agent") or path.stem[7:], "count": len(data.get("items") or []),
+                        "saved": int(data.get("saved") or 0)})
+        except (OSError, ValueError):
+            continue
+    return out
+
+
+def _tg_xy(raw: object) -> tuple[float, float] | None:
+    """"x,y" ของเว็บเอง (คนละสเกลกับแผนที่เรา — ยังไม่แปลง) · "-1,-1" = ไม่มี."""
+    try:
+        x, y = (float(v) for v in str(raw).split(","))
+    except ValueError:
+        return None
+    return None if x < 0 or y < 0 else (x, y)
+
+
+def _norm_tg(row: dict) -> dict | None:
+    attrs = row.get("attributes") or {}
+    video = str(row.get("videoUrl") or "").strip()
+    if row.get("id") is None or not video:
+        return None
+    title = re.sub(r"\s+", " ", str(row.get("title") or "")).strip()
+    desc = str(row.get("description") or "").strip()
+    side = str(attrs.get("side") or "all").lower()
+    ability = str(attrs.get("ability") or "").strip()
+    return {
+        "uid": f"tg:{row['id']}", "src": "tg", "i": row["id"],
+        "t": title, "a": str(attrs.get("agent") or "").lower(),
+        "m": str(attrs.get("map") or "").lower(),
+        # "all" = ใช้ได้ทั้งสองฝั่ง — ฝั่งหลักตั้งเป็นบุก ส่วน ``both`` ให้ตัวกรองฝั่งนับเข้าทั้งสองฝั่ง
+        "side": "defense" if side.startswith("def") else "attack", "both": side not in ("attack", "defense"),
+        "st": _vc_site(title),                       # A/B/C เดาจากชื่อ — ไม่เจอก็ว่างให้เลือกเอง
+        "ab": ability, "n": 0, "from": None, "to": None, "d": "",
+        "desc": desc, "diff": "", "video": video,
+        "thumb": row.get("previewImageUrl") or "",
+        "xy": _tg_xy(attrs.get("location")),
+        "score": row.get("score"), "views": row.get("views"),
+    }
+
+
+def _fetch_tg(force: bool) -> list[dict]:
+    """อ่านไฟล์ที่ bookmarklet ส่งมา — ไม่ต่อเน็ต (``force`` ไม่มีผล)."""
+    out: list[dict] = []
+    seen: set[str] = set()
+    for path in sorted(TG_CACHE.glob("guides-*.json")):
+        try:
+            rows = json.loads(path.read_text(encoding="utf-8")).get("items") or []
+        except (OSError, ValueError):
+            continue
+        for row in rows:
+            entry = _norm_tg(row) if isinstance(row, dict) else None
+            if entry and entry["uid"] not in seen:
+                seen.add(entry["uid"])
+                out.append(entry)
+    return out
+
+
+def _steps_tg(entry: dict) -> list[str]:
+    return []                                # มีแต่วิดีโอ ไม่มีรูปทีละขั้น
+
+
 # --------------------------------------------------------------------- ทะเบียน
 
 
@@ -240,6 +385,7 @@ SOURCES: dict[str, Source] = {
     "vlp": Source("vlp", "ValoLineups Pro", VLP_SITE, VLP_CACHE, _fetch_vlp, _steps_vlp,
                   lambda entry: None),
     "vc": Source("vc", "ValCompanion", VC_SITE, VC_CACHE, _fetch_vc, _steps_vc),
+    "tg": Source("tg", "tracker.gg", TG_SITE, TG_CACHE, _fetch_tg, _steps_tg),
 }
 DEFAULT_SOURCES = tuple(SOURCES)
 

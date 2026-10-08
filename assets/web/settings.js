@@ -248,7 +248,39 @@ $("voice-sample").addEventListener("click", async () => {
   }
 });
 
+/* ---------- tracker.gg: bookmarklet + สถานะรายการที่เคยส่งเข้ามา ---------- */
+const TRACKER = { href: "" };
+
+async function loadTracker() {
+  try {
+    const data = await api("tracker/status");
+    TRACKER.href = data.bookmarklet;
+    $("tracker-link").href = data.bookmarklet;
+    $("tracker-info").textContent = data.agents.length
+      ? "ส่งเข้ามาแล้ว: " + data.agents.map((a) =>
+        `${agentTh(a.agent)} ${a.count.toLocaleString()} ใบ (${new Date(a.saved * 1000).toLocaleString("th-TH")})`).join(" · ")
+      : "ยังไม่เคยส่งรายการเข้ามา";
+  } catch (error) {
+    $("tracker-info").textContent = error.message;
+  }
+}
+
+// ห้ามให้คลิกเฉยๆ รัน javascript: บนหน้านี้ — ลิงก์นั้นมีไว้ลากไปเป็นบุ๊กมาร์กเท่านั้น
+$("tracker-link").addEventListener("click", (event) => {
+  event.preventDefault();
+  say("ลากปุ่มนี้ไปวางบนแถบบุ๊กมาร์กของเบราว์เซอร์ (ไม่ใช่คลิก) แล้วไปกดบนหน้า tracker.gg", "warn");
+});
+$("tracker-copy").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(TRACKER.href);
+    say("คัดลอกโค้ดแล้ว — สร้างบุ๊กมาร์กใหม่ แล้ววางโค้ดในช่อง URL", "ok");
+  } catch {
+    say("คัดลอกไม่ได้ — ลากปุ่มไปวางบนแถบบุ๊กมาร์กแทน", "err");
+  }
+});
+
 function openSettingsTab() {
+  loadTracker();
   loadSettings();
   loadShrink();
   loadVoice();

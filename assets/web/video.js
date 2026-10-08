@@ -114,9 +114,35 @@ if (typeof module !== "undefined") {
     }
   }
 
+  const hasVideo = (lineup) => !!VID.data[lineup.uid];
+  const opening = new Set();
+
+  /** ใบจาก tracker.gg (มีแต่สตรีมวิดีโอ ไม่มีรูปทีละขั้น) → ให้เซิร์ฟเวอร์โหลดคลิปมาไว้ในเครื่อง แล้ววาดใบนี้ใหม่
+   *  แมพ/ฝั่ง/สกิล/ชื่อ เติมจากใบอยู่แล้วใน showCurrent · พิกัดบนแผนที่ของ tracker.gg ไม่แปลง (จิ้มหมุดเอง) */
+  async function openEntryVideo(lineup) {
+    if (opening.has(lineup.uid)) return;
+    opening.add(lineup.uid);
+    stopPreview();
+    $("s-videopane").hidden = true;
+    $("s-sheetpane").hidden = false;
+    $("s-loading").hidden = false;
+    toastSource("กำลังโหลดวิดีโอจาก tracker.gg… (ครั้งแรกไม่กี่วินาที)", "info");
+    try {
+      const result = await api("video/open", { uid: lineup.uid });
+      VID.data[lineup.uid] = result;
+      VID.plan[lineup.uid] = cleanPlan(result.plan);
+    } catch (error) {
+      toastSource("เปิดวิดีโอไม่สำเร็จ: " + error.message, "err");
+    } finally {
+      opening.delete(lineup.uid);
+      $("s-loading").hidden = true;
+    }
+    if (VID.data[lineup.uid] && currentSource() === lineup) showCurrent();
+  }
+
   /** เรียกจาก showCurrent — ใบวิดีโอสลับฝั่งซ้ายเป็นหน้าทำวิดีโอแล้วคืน true · ใบอื่นสลับกลับแล้วคืน false */
   function showVideo(lineup) {
-    const data = lineup && lineup.src === "yt" ? VID.data[lineup.uid] : null;
+    const data = lineup ? VID.data[lineup.uid] : null;     // มีข้อมูลวิดีโอ = เปิดเป็นใบวิดีโอ (yt หรือ tg)
     $("s-videopane").hidden = !data;
     $("s-sheetpane").hidden = !!data;
     $("s-howtobox").hidden = !data;
@@ -131,7 +157,7 @@ if (typeof module !== "undefined") {
       VID.sel = null;
       $("v-loading").hidden = false;
       player().src = `/api/video/file?uid=${encodeURIComponent(lineup.uid)}&t=${TOKEN}`;
-      $("s-howto").value = "";
+      $("s-howto").value = data.howto || "";               // ใบจาก tracker.gg: คำอธิบายของเว็บ แก้ต่อได้
       $("s-vsubs").textContent = data.subs && data.subs.length ? `ซับในช่วงนี้: “${data.subs.join(" ")}”` : "";
     }
     requestAnimationFrame(() => { drawTimeline(); refreshLength(); });
@@ -449,6 +475,8 @@ if (typeof module !== "undefined") {
   }
 
   window.showVideo = showVideo;
+  window.hasVideo = hasVideo;
+  window.openEntryVideo = openEntryVideo;
   window.videoPlanFor = videoPlanFor;
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", wireVideo);
   else wireVideo();

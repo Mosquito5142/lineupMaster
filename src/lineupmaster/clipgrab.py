@@ -478,6 +478,80 @@ def open_video(link: str, root: Path, aliases: dict | None = None,
     return clip
 
 
+def open_stream(url: str, root: Path, key: str, *, title: str, side: str | None = None,
+                site: str | None = None, map_: str | None = None, agent: str | None = None,
+                progress: Callable[[str], None] | None = None) -> Clip:
+    """คลิปสตรีม HLS ทั้งคลิป (เช่น tracker.gg · Cloudflare Stream ~360p ยาว 10-30 วิ) → ไฟล์ในเครื่อง + การขยับ.
+
+    ใช้ท่อเดียวกับ ``open_video`` (proxy.mp4 → measure → render) แต่ไม่มี chapter/ซับ/yt-dlp:
+    PyAV เปิดลิงก์ ``.m3u8`` ได้ตรงๆ · ``key`` = ชื่อโฟลเดอร์ใน ``.cache/clips`` (เช่น ``tg-123``)
+    เวลาในคลิปนับจาก 0 ที่ต้นไฟล์เลย (proxy_offset = 0) เพราะ ``_remux`` เลื่อนเวลาให้เริ่มที่ 0 อยู่แล้ว
+    """
+    say = progress or (lambda _text: None)
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", key):
+        raise ValueError("รหัสคลิปไม่ถูกต้อง")
+    folder = root / ".cache" / "clips" / key
+    clip = _read_cached(folder) or Clip(vid=key, title=title, chapter=title, start=0.0, end=0.0,
+                                        folder=str(folder), side=side, site=site, map=map_, agent=agent)
+    proxy = proxy_path(clip)
+    if not proxy.is_file() or clip.proxy_offset is None:
+        say("กำลังโหลดคลิป…")
+        folder.mkdir(parents=True, exist_ok=True)
+        _remux_stream(url, proxy)
+        clip.proxy_offset = 0.0
+        clip.motion_times = []
+    if not clip.motion_times or clip.end <= clip.start:
+        clip.start = 0.0
+        clip.end = _proxy_duration(proxy)
+        if clip.end < 0.3:
+            raise OSError("วิดีโอสั้นเกินไปหรืออ่านความยาวไม่ได้ — ลองใหม่อีกครั้ง")
+        measure(clip)
+    save_clip(clip)
+    proxy.touch()
+    return clip
+
+
+def _remux_stream(url: str, target: Path) -> None:
+    """HLS → proxy.mp4 ทั้งคลิป โดยไม่แปลงใหม่ (เขียน .part ก่อน แล้วค่อยเปลี่ยนชื่อ)."""
+    import av
+
+    temp = target.with_name(target.name + ".part")
+    base = None
+    try:
+        with av.open(url, timeout=30.0) as src:
+            stream = src.streams.video[0]
+            tb = stream.time_base
+            with av.open(str(temp), "w", format="mp4", options={"movflags": "+faststart"}) as out:
+                dst = out.add_stream_from_template(stream)
+                for packet in src.demux(stream):
+                    if packet.dts is None:
+                        continue
+                    if base is None:
+                        base = packet.dts
+                    packet.dts -= base
+                    if packet.pts is not None:
+                        packet.pts -= base
+                    packet.stream = dst
+                    out.mux(packet)
+    except av.error.FFmpegError as error:
+        temp.unlink(missing_ok=True)
+        raise OSError(f"เปิดวิดีโอจากเว็บไม่ได้: {error}") from None
+    if base is None:
+        temp.unlink(missing_ok=True)
+        raise OSError("วิดีโอว่างเปล่า — ลองใหม่อีกครั้ง")
+    temp.replace(target)
+
+
+def _proxy_duration(path: Path) -> float:
+    import av
+
+    with av.open(str(path)) as container:
+        stream = container.streams.video[0]
+        if stream.duration is not None:
+            return round(float(stream.duration * stream.time_base), 3)
+        return round(float(container.duration or 0) / 1_000_000, 3)
+
+
 def video_plan(clip: Clip) -> dict:
     """แผนที่บันทึกไว้ หรือแผนที่เดาให้จากการขยับของท่านี้."""
     if clip.plan:
